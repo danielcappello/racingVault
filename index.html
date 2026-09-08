@@ -6,26 +6,38 @@
 <title>Formline — Racing Profitability Analyser</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
-  --baize:#0F2A22;
-  --baize-light:#173C31;
-  --baize-line:#2C5346;
-  --paper:#FAF7EE;
-  --paper-dim:#F1ECDC;
-  --line:#DCD5BE;
-  --brass:#B8862E;
-  --brass-light:#D9A63F;
-  --crimson:#9A3B34;
-  --forest:#2F6B4F;
-  --text:#1B2620;
-  --text-onbaize:#E9EDE7;
-  --text-muted:#5B665F;
-  --text-muted-onbaize:#9FB3A7;
-  --font-display:'Source Serif 4', Georgia, serif;
-  --font-ui:'IBM Plex Sans', -apple-system, sans-serif;
-  --font-mono:'IBM Plex Mono', monospace;
+  --bg:#F7F8FA;
+  --surface:#FFFFFF;
+  --border:#E5E7EB;
+  --border-strong:#D1D5DB;
+  --text:#111827;
+  --text-muted:#6B7280;
+  --text-subtle:#9CA3AF;
+
+  --primary:#4F46E5;
+  --primary-hover:#4338CA;
+  --primary-soft:#EEF2FF;
+  --primary-soft-border:#E0E1FC;
+
+  --success:#059669;
+  --success-soft:#ECFDF5;
+  --success-soft-border:#D1FAE5;
+  --danger:#DC2626;
+  --danger-soft:#FEF2F2;
+  --danger-soft-border:#FEE2E2;
+
+  --radius-sm:6px;
+  --radius-md:10px;
+  --radius-lg:14px;
+
+  --shadow-sm:0 1px 2px rgba(16,24,40,0.05);
+  --shadow-md:0 4px 12px rgba(16,24,40,0.06), 0 1px 2px rgba(16,24,40,0.04);
+
+  --font-ui:'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono:'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
 }
 
 *{ box-sizing:border-box; }
@@ -33,11 +45,14 @@ html,body{ margin:0; padding:0; }
 body{
   font-family:var(--font-ui);
   color:var(--text);
-  background:var(--paper);
-  font-size:15px;
-  line-height:1.5;
+  background:var(--bg);
+  font-size:14.5px;
+  line-height:1.55;
+  -webkit-font-smoothing:antialiased;
 }
-h1,h2,h3{ font-family:var(--font-display); margin:0; font-weight:600; }
+h1,h2,h3{ font-family:var(--font-ui); margin:0; font-weight:700; letter-spacing:-0.01em; color:var(--text); }
+h2{ font-size:16px; }
+h3{ font-size:14px; }
 .mono{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
 .muted{ color:var(--text-muted); }
 .small{ font-size:12.5px; }
@@ -45,444 +60,409 @@ button{ font-family:inherit; cursor:pointer; }
 select, input[type="number"], input[type="text"]{
   font-family:inherit;
   font-size:13px;
-  padding:6px 8px;
-  border:1px solid var(--line);
+  padding:7px 10px;
+  border:1px solid var(--border-strong);
   background:#fff;
-  border-radius:2px;
+  border-radius:var(--radius-sm);
   color:var(--text);
 }
+select:focus, input:focus{ outline:2px solid var(--primary-soft-border); border-color:var(--primary); }
 table{ border-collapse:collapse; width:100%; }
 
-/* ---------- layout ---------- */
-.app{
-  display:grid;
-  grid-template-columns:300px 1fr;
-  min-height:100vh;
-}
-.sidebar{
-  background:var(--baize);
-  color:var(--text-onbaize);
-  padding:26px 22px;
-  display:flex;
-  flex-direction:column;
-  gap:28px;
-  position:sticky;
-  top:0;
-  height:100vh;
-  overflow-y:auto;
-}
-.main{
-  padding:28px 34px 60px;
-  min-width:0;
-}
+/* ---------------- shell / layout ---------------- */
+.shell{ min-height:100vh; display:flex; flex-direction:column; }
 
-.drawer-toggle{ display:none; }
-
-/* ---------- brand ---------- */
-.brand{ display:flex; align-items:center; gap:12px; }
+.navbar{
+  position:sticky; top:0; z-index:10;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 24px;
+  height:60px;
+  background:rgba(255,255,255,0.85);
+  backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--border);
+}
+.navbar-left{ display:flex; align-items:center; gap:28px; }
+.brand{ display:flex; align-items:center; gap:9px; }
 .brand-mark{
-  width:40px; height:40px;
-  border:1.5px solid var(--brass);
-  color:var(--brass-light);
+  width:28px; height:28px; border-radius:8px;
+  background:var(--primary); color:#fff;
   display:flex; align-items:center; justify-content:center;
-  font-family:var(--font-mono);
-  font-weight:600;
-  font-size:14px;
+  font-weight:700; font-size:13px;
   flex-shrink:0;
 }
-.brand-text h1{ font-size:20px; color:#fff; letter-spacing:0.2px; }
-.brand-text p{ margin:2px 0 0; font-size:12px; color:var(--text-muted-onbaize); }
+.brand-name{ font-weight:700; font-size:15px; letter-spacing:-0.01em; }
 
-/* ---------- sidebar sections ---------- */
-.sidebar-section{ border-top:1px solid var(--baize-line); padding-top:18px; }
-.sidebar-section-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:10px; }
-.sidebar-section-head h2{ font-size:13px; text-transform:none; color:var(--text-onbaize); font-family:var(--font-ui); font-weight:600; letter-spacing:0.3px; }
-.link-btn{ background:none; border:none; color:var(--brass-light); font-size:12px; padding:0; }
-.link-btn:hover{ text-decoration:underline; }
-
-.filter-list{ display:flex; flex-direction:column; gap:10px; margin-bottom:10px; }
-.filter-card{
-  background:var(--baize-light);
-  border:1px solid var(--baize-line);
-  border-left:3px solid var(--brass);
-  padding:10px 10px 10px 12px;
+.tabswitch{
+  display:flex; gap:2px;
+  background:#F1F2F5; padding:3px; border-radius:10px;
 }
-.filter-card-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
-.filter-card-title{ font-size:12.5px; font-weight:600; color:var(--text-onbaize); }
-.filter-remove{ background:none; border:none; color:var(--text-muted-onbaize); font-size:15px; line-height:1; padding:0 2px; }
-.filter-remove:hover{ color:var(--crimson); }
+.tab{
+  background:none; border:none; padding:7px 14px;
+  font-size:13.5px; font-weight:500; color:var(--text-muted);
+  border-radius:8px;
+}
+.tab.active{ background:#fff; color:var(--text); font-weight:600; box-shadow:var(--shadow-sm); }
+
+.status{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--text-muted); max-width:420px; text-align:right; }
+.status-dot{ width:7px; height:7px; border-radius:50%; background:var(--text-subtle); flex-shrink:0; }
+.status-dot.ok{ background:var(--success); }
+.status-dot.err{ background:var(--danger); }
+
+.content{
+  flex:1;
+  width:100%;
+  max-width:1180px;
+  margin:0 auto;
+  padding:28px 24px 80px;
+  display:flex; flex-direction:column; gap:20px;
+}
+.panel{ display:none; flex-direction:column; gap:20px; }
+.panel.active{ display:flex; }
+
+/* ---------------- cards ---------------- */
+.card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-sm);
+  padding:22px 24px;
+}
+.card-head{ display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:16px; }
+.card-head p{ margin:5px 0 0; }
+
+.source-tag{
+  display:inline-block; font-family:var(--font-mono); font-size:10.5px; font-weight:500;
+  color:var(--text-muted); background:#F3F4F6; border:1px solid var(--border);
+  padding:2px 7px; border-radius:5px; margin-left:6px; vertical-align:middle;
+}
+
+.btn-text{ background:none; border:none; color:var(--primary); font-size:12.5px; font-weight:600; padding:0; }
+.btn-text:hover{ color:var(--primary-hover); text-decoration:underline; }
+
+/* ---------------- buttons ---------------- */
+.btn{ border:1px solid var(--border-strong); background:#fff; padding:8px 16px; font-size:13px; font-weight:600; border-radius:var(--radius-sm); color:var(--text); }
+.btn:hover{ background:#F9FAFB; }
+.btn-primary{ background:var(--primary); border-color:var(--primary); color:#fff; }
+.btn-primary:hover{ background:var(--primary-hover); border-color:var(--primary-hover); }
+.btn-secondary{ background:var(--primary-soft); border-color:var(--primary-soft-border); color:var(--primary); }
+.btn-secondary:hover{ background:#E4E4FD; }
+.btn-ghost{ background:transparent; border-color:var(--border); }
+.btn-small{ padding:6px 11px; font-size:12px; }
+
+.apply-btn{
+  background:var(--primary); border:1px solid var(--primary); color:#fff;
+  font-size:12px; font-weight:600; padding:6px 12px; border-radius:var(--radius-sm); white-space:nowrap;
+}
+.apply-btn:hover{ background:var(--primary-hover); }
+
+/* ---------------- conditions / filter bar ---------------- */
+.filter-bar{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
+.filter-card{
+  background:#FAFAFB;
+  border:1px solid var(--border);
+  border-radius:var(--radius-md);
+  padding:10px 12px;
+  min-width:220px;
+  max-width:280px;
+}
+.filter-card-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; }
+.filter-card-title{ font-size:12.5px; font-weight:600; color:var(--text); }
+.filter-remove{ background:none; border:none; color:var(--text-subtle); font-size:16px; line-height:1; padding:0 2px; }
+.filter-remove:hover{ color:var(--danger); }
 .filter-card-body{ display:flex; flex-direction:column; gap:6px; }
-.filter-card-body input, .filter-card-body select{ width:100%; font-size:12.5px; padding:5px 6px; }
+.filter-card-body input, .filter-card-body select{ width:100%; font-size:12.5px; padding:6px 8px; }
 .range-row{ display:flex; gap:6px; align-items:center; }
 .range-row input{ width:0; flex:1; }
-.range-row span{ color:var(--text-muted-onbaize); font-size:11px; }
+.range-row span{ color:var(--text-subtle); font-size:11px; }
 
-.chip-row{ display:flex; flex-wrap:wrap; gap:5px; margin-top:4px; }
+.chip-row{ display:flex; flex-wrap:wrap; gap:6px; margin-top:2px; }
 .chip{
-  background:var(--baize);
-  border:1px solid var(--baize-line);
-  color:var(--text-onbaize);
-  font-size:11px;
-  padding:3px 6px;
-  display:flex; align-items:center; gap:4px;
+  background:var(--primary-soft);
+  border:1px solid var(--primary-soft-border);
+  color:var(--primary);
+  font-size:11.5px; font-weight:500;
+  padding:3px 8px; border-radius:999px;
+  display:flex; align-items:center; gap:5px;
 }
-.chip button{ background:none; border:none; color:var(--text-muted-onbaize); font-size:12px; padding:0; }
+.chip button{ background:none; border:none; color:var(--primary); opacity:0.6; font-size:13px; padding:0; line-height:1; }
+.chip button:hover{ opacity:1; }
 .ms-search{ width:100%; margin-bottom:4px; }
 .ms-list{
   max-height:130px; overflow-y:auto;
-  border:1px solid var(--baize-line);
-  background:var(--baize);
+  border:1px solid var(--border);
+  border-radius:var(--radius-sm);
+  background:#fff;
 }
-.ms-option{ display:flex; align-items:center; gap:6px; padding:4px 8px; font-size:12px; color:var(--text-onbaize); }
-.ms-option:hover{ background:var(--baize-light); }
+.ms-option{ display:flex; align-items:center; gap:6px; padding:5px 8px; font-size:12px; color:var(--text); }
+.ms-option:hover{ background:#F3F4F6; }
 .ms-option input{ margin:0; }
 
-.add-filter-row{ display:flex; gap:6px; }
-.add-filter-row select{ flex:1; font-size:12.5px; }
+.add-filter-row{ display:flex; gap:8px; align-items:center; }
+.add-filter-row select{ min-width:220px; font-size:13px; }
 
-.saved-systems{ display:flex; flex-direction:column; gap:8px; }
-.saved-system{
-  background:var(--baize-light);
-  border:1px solid var(--baize-line);
-  padding:8px 10px;
-  font-size:12px;
-}
-.saved-system-name{ font-weight:600; color:#fff; margin-bottom:2px; }
-.saved-system-meta{ color:var(--text-muted-onbaize); font-family:var(--font-mono); font-size:11px; }
-.saved-system-actions{ display:flex; gap:8px; margin-top:6px; }
-.saved-system-actions button{ background:none; border:none; color:var(--brass-light); font-size:11px; padding:0; }
+/* conditions summary card (Results tab) */
+.conditions-summary-card{ padding:16px 22px; }
+.conditions-summary-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.conditions-summary-head h3{ font-size:13px; }
+.conditions-summary-card .chip{ background:#F3F4F6; border-color:var(--border); color:var(--text); }
+.conditions-summary-card .chip button{ display:none; }
 
-.sidebar-footer{ margin-top:auto; border-top:1px solid var(--baize-line); padding-top:14px; }
-
-/* ---------- topbar ---------- */
-.topbar{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:20px; }
-.status{ display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--text-muted); }
-.status-dot{ width:8px; height:8px; border-radius:50%; background:var(--brass); flex-shrink:0; }
-.status-dot.ok{ background:var(--forest); }
-.status-dot.err{ background:var(--crimson); }
-
-.tabs{ display:flex; gap:2px; }
-.tab{
-  background:var(--paper-dim);
-  border:1px solid var(--line);
-  border-bottom:none;
-  padding:9px 16px;
-  font-size:13px;
-  font-weight:500;
-  color:var(--text-muted);
-  border-radius:3px 3px 0 0;
-  position:relative;
-  top:1px;
-}
-.tab.active{ background:var(--paper); color:var(--text); border-bottom:1px solid var(--paper); font-weight:600; }
-
-/* ---------- tote board ---------- */
+/* ---------------- tote board ---------------- */
 .board{
   display:grid;
   grid-template-columns:repeat(6, 1fr);
-  border:1px solid var(--line);
-  border-bottom:2px solid var(--ink, var(--baize));
-  margin-bottom:26px;
-  background:#fff;
+  gap:1px;
+  background:var(--border);
+  border:1px solid var(--border);
+  border-radius:var(--radius-lg);
+  overflow:hidden;
+  box-shadow:var(--shadow-sm);
 }
-.board-cell{
-  padding:16px 14px;
-  border-left:1px solid var(--line);
-  text-align:left;
-}
-.board-cell:first-child{ border-left:none; }
-.board-value{ font-size:26px; font-weight:600; color:var(--text); }
-.board-label{ font-size:11px; color:var(--text-muted); margin-top:4px; letter-spacing:0.2px; }
-.board-cell.pos .board-value{ color:var(--forest); }
-.board-cell.neg .board-value{ color:var(--crimson); }
+.board-cell{ padding:16px 16px; background:var(--surface); }
+.board-value{ font-size:22px; font-weight:700; color:var(--text); letter-spacing:-0.01em; }
+.board-label{ font-size:11px; color:var(--text-muted); margin-top:4px; }
+.board-cell.pos .board-value{ color:var(--success); }
+.board-cell.neg .board-value{ color:var(--danger); }
 
 @media (max-width:900px){
   .board{ grid-template-columns:repeat(2,1fr); }
-  .board-cell{ border-left:none; border-top:1px solid var(--line); }
-  .board-cell:nth-child(odd){ border-right:1px solid var(--line); }
 }
 
-/* ---------- panels ---------- */
-.panel{
-  display:none;
-  border:1px solid var(--line);
-  border-top:none;
-  background:#fff;
-  padding:24px 24px 8px;
-}
-.panel.active{ display:block; }
-.panel-head{ margin-bottom:16px; }
-.panel-head h2{ font-size:17px; margin-bottom:4px; }
-.panel-head-row{ display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:10px; margin-top:26px; }
-.table-tools{ display:flex; align-items:center; gap:10px; }
-.table-tools select{ margin-left:4px; }
+/* ---------------- scan controls ---------------- */
+.scan-controls{ display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end; margin-bottom:18px; padding:14px 16px; background:#FAFAFB; border:1px solid var(--border); border-radius:var(--radius-md); }
+.scan-controls label{ display:flex; flex-direction:column; gap:4px; font-weight:500; color:var(--text-muted); font-size:12px; }
 
-.chart-wrap{ position:relative; border:1px solid var(--line); background:var(--paper-dim); margin-bottom:6px; }
-#profitChart{ width:100%; height:230px; display:block; }
-.empty-note{ padding:40px 20px; text-align:center; color:var(--text-muted); font-size:13px; }
-
-.table-wrap{ overflow-x:auto; border:1px solid var(--line); }
+/* ---------------- tables ---------------- */
+.table-wrap{ overflow-x:auto; border:1px solid var(--border); border-radius:var(--radius-md); }
 table thead th{
-  text-align:left;
-  font-size:11px;
-  text-transform:uppercase;
-  letter-spacing:0.4px;
-  color:var(--text-muted);
-  font-weight:600;
-  padding:9px 12px;
-  border-bottom:1px solid var(--line);
-  background:var(--paper-dim);
-  white-space:nowrap;
-  cursor:default;
+  text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.04em;
+  color:var(--text-muted); font-weight:600; padding:10px 14px;
+  border-bottom:1px solid var(--border); background:#FAFAFB; white-space:nowrap;
 }
-table tbody td{
-  padding:8px 12px;
-  border-bottom:1px solid var(--line);
-  font-size:13px;
-  white-space:nowrap;
-}
-table tbody tr:hover{ background:var(--paper-dim); }
+table tbody td{ padding:10px 14px; border-bottom:1px solid var(--border); font-size:13px; white-space:nowrap; }
+table tbody tr:last-child td{ border-bottom:none; }
+table tbody tr:hover{ background:#FAFAFB; }
 th.num, td.num{ text-align:right; font-family:var(--font-mono); }
-td.win{ color:var(--forest); font-weight:600; }
-td.loss{ color:var(--text-muted); }
-.profit-pos{ color:var(--forest); font-family:var(--font-mono); }
-.profit-neg{ color:var(--crimson); font-family:var(--font-mono); }
+.profit-pos{ color:var(--success); font-family:var(--font-mono); font-weight:600; }
+.profit-neg{ color:var(--danger); font-family:var(--font-mono); }
 
-.pager{ display:flex; align-items:center; justify-content:center; gap:14px; padding:14px 0 20px; font-size:12.5px; color:var(--text-muted); }
-.pager button{ background:none; border:1px solid var(--line); padding:5px 10px; font-size:12px; }
-.pager button:disabled{ opacity:0.4; cursor:default; }
-
-.scan-controls{ display:flex; flex-wrap:wrap; gap:16px; align-items:flex-end; margin-bottom:18px; padding:14px; background:var(--paper-dim); border:1px solid var(--line); }
-.scan-controls label{ display:flex; flex-direction:column; gap:4px; font-weight:500; color:var(--text-muted); }
-
-.btn{ border:1px solid var(--line); background:#fff; padding:8px 16px; font-size:13px; font-weight:600; }
-.btn-brass{ background:var(--brass); border-color:var(--brass); color:#fff; }
-.btn-brass:hover{ background:var(--brass-light); border-color:var(--brass-light); }
-.btn-ghost{ background:transparent; }
-.btn-small{ padding:6px 10px; font-size:12px; }
-
-.apply-btn{ background:none; border:1px solid var(--brass); color:var(--brass); font-size:11px; padding:4px 9px; white-space:nowrap; }
-.apply-btn:hover{ background:var(--brass); color:#fff; }
-
-.mini-table{ width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--line); }
-.mini-table th{ font-size:10px; text-transform:uppercase; letter-spacing:0.3px; color:var(--text-muted); padding:6px 8px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
-.mini-table td{ font-size:12px; padding:6px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
+.mini-table{ width:100%; border-collapse:collapse; }
+.mini-table th{ font-size:10px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; white-space:nowrap; background:#FAFAFB; }
+.mini-table td{ font-size:12.5px; padding:8px 10px; border-bottom:1px solid var(--border); white-space:nowrap; }
 .mini-table th.num, .mini-table td.num{ text-align:right; font-family:var(--font-mono); }
 .mini-table tbody tr:last-child td{ border-bottom:none; }
 
-.source-tag{
-  display:inline-block; font-family:var(--font-mono); font-size:10.5px;
-  color:var(--text-muted); background:var(--paper-dim); border:1px solid var(--line);
-  padding:2px 7px; margin-left:8px; vertical-align:middle;
-}
+.pager{ display:flex; align-items:center; justify-content:center; gap:14px; padding:16px 0 4px; font-size:12.5px; color:var(--text-muted); }
+.pager button{ background:#fff; border:1px solid var(--border-strong); border-radius:var(--radius-sm); padding:5px 10px; font-size:12px; }
+.pager button:disabled{ opacity:0.4; cursor:default; }
 
-@media (max-width:900px){
-  .app{ grid-template-columns:1fr; }
-  .sidebar{
-    position:fixed; z-index:20; left:0; top:0; width:280px;
-    transform:translateX(-100%);
-    transition:transform 0.2s ease;
-    box-shadow:2px 0 18px rgba(0,0,0,0.25);
-  }
-  .sidebar.open{ transform:translateX(0); }
-  .drawer-toggle{
-    display:inline-flex; align-items:center; gap:6px;
-    position:fixed; bottom:18px; left:18px; z-index:21;
-    background:var(--baize); color:#fff; border:1px solid var(--brass);
-    padding:10px 14px; font-size:13px; border-radius:2px;
-    box-shadow:0 4px 14px rgba(0,0,0,0.3);
-  }
-  .main{ padding:20px 16px 60px; }
-  .topbar{ margin-top:44px; }
+.empty-note{ padding:36px 20px; text-align:center; color:var(--text-muted); font-size:13px; }
+
+.table-tools{ display:flex; align-items:center; gap:10px; }
+.table-tools select{ margin-left:4px; }
+
+/* ---------------- chart ---------------- */
+.chart-wrap{ position:relative; border:1px solid var(--border); border-radius:var(--radius-md); background:#FAFAFB; margin-bottom:6px; }
+#profitChart{ width:100%; height:220px; display:block; }
+
+@media (max-width:700px){
+  .navbar{ padding:0 16px; }
+  .navbar-left{ gap:14px; }
+  .content{ padding:20px 14px 60px; }
+  .card{ padding:18px; }
+  .status{ display:none; }
 }
 
 </style>
 </head>
 <body>
 
-<div class="app">
+<div class="shell">
 
-  <button id="drawerToggle" class="drawer-toggle" aria-label="Toggle filters">☰ Filters</button>
-
-  <aside class="sidebar" id="sidebar">
-    <div class="brand">
-      <div class="brand-mark">FL</div>
-      <div class="brand-text">
-        <h1>Formline</h1>
-        <p>Racing profitability analyser</p>
+  <header class="navbar">
+    <div class="navbar-left">
+      <div class="brand">
+        <span class="brand-mark">F</span>
+        <span class="brand-name">Formline</span>
       </div>
-    </div>
-
-    <div class="sidebar-section">
-      <div class="sidebar-section-head">
-        <h2>Conditions</h2>
-        <button id="clearFilters" class="link-btn">Clear all</button>
-      </div>
-      <div id="filterList" class="filter-list"></div>
-      <div class="add-filter-row">
-        <select id="newFieldSelect"></select>
-        <button id="addFilterBtn" class="btn btn-brass btn-small">+ Add</button>
-      </div>
-    </div>
-
-    <div class="sidebar-section">
-      <div class="sidebar-section-head">
-        <h2>Saved systems</h2>
-      </div>
-      <div id="savedSystems" class="saved-systems">
-        <p class="muted small">Systems you save from the Scan tab will appear here.</p>
-      </div>
-    </div>
-
-    <div class="sidebar-footer">
-      <p class="muted small">Win/place profit assumes level $1 stakes backed at historic starting price. Place = finish in the top 3. Conditions here apply everywhere — historic backtesting always reads racing_results.csv, upcoming qualifiers always read racing_fixtures.csv, and the two are never mixed.</p>
-    </div>
-  </aside>
-
-  <main class="main">
-
-    <header class="topbar">
-      <div class="status" id="statusBar">
-        <span class="status-dot" id="statusDot"></span>
-        <span id="statusText">Loading historic form and fixtures…</span>
-      </div>
-      <nav class="tabs" id="tabs">
+      <nav class="tabswitch" id="tabs">
         <button class="tab active" data-tab="scan">Scan for angles</button>
         <button class="tab" data-tab="results">Results</button>
       </nav>
-    </header>
+    </div>
+    <div class="status" id="statusBar">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Loading historic form and fixtures…</span>
+    </div>
+  </header>
 
-    <section class="board" id="board">
-      <div class="board-cell">
-        <div class="board-value mono" id="statBets">—</div>
-        <div class="board-label">Qualifying runs</div>
-      </div>
-      <div class="board-cell">
-        <div class="board-value mono" id="statStrike">—</div>
-        <div class="board-label">Win strike rate</div>
-      </div>
-      <div class="board-cell">
-        <div class="board-value mono" id="statPlaceStrike">—</div>
-        <div class="board-label">Place strike rate</div>
-      </div>
-      <div class="board-cell" id="cellWinRoi">
-        <div class="board-value mono" id="statWinRoi">—</div>
-        <div class="board-label">Win ROI (SP, $1 level)</div>
-      </div>
-      <div class="board-cell" id="cellPlaceRoi">
-        <div class="board-value mono" id="statPlaceRoi">—</div>
-        <div class="board-label">Place ROI</div>
-      </div>
-      <div class="board-cell">
-        <div class="board-value mono" id="statAvgSp">—</div>
-        <div class="board-label">Average SP</div>
-      </div>
-    </section>
+  <main class="content">
 
-    <!-- SCAN TAB (landing page) -->
+    <!-- ================= SCAN TAB ================= -->
     <section class="panel active" id="panel-scan">
-      <div class="panel-head">
-        <h2>Scan for profitable angles <span class="source-tag">racing_results.csv — historic</span></h2>
-        <p class="muted small">Start here. Set any starting conditions in the sidebar (optional), then run a scan — it tests values, alone or combined, across state, track, going, class, day of week, distance, barrier, weight, field size, track rating, jockey, trainer, and running position at the 400m/800m, and ranks them by return on investment. Pick an angle to see exactly which upcoming runners and historic races match it.</p>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>Conditions</h2>
+            <p class="muted small">Optional — narrow the historic data before you scan. Any angle you view later stacks on top of these.</p>
+          </div>
+          <button id="clearFilters" class="btn-text">Clear all</button>
+        </div>
+        <div id="filterList" class="filter-bar"></div>
+        <div class="add-filter-row">
+          <select id="newFieldSelect"></select>
+          <button id="addFilterBtn" class="btn btn-secondary btn-small">+ Add condition</button>
+        </div>
       </div>
-      <div class="scan-controls">
-        <label class="small">Minimum sample
-          <input type="number" id="scanMinSample" value="30" min="5" step="5">
-        </label>
-        <label class="small">Rank by
-          <select id="scanMetric">
-            <option value="winROI">Win ROI</option>
-            <option value="placeROI">Place ROI</option>
-          </select>
-        </label>
-        <label class="small">Combination depth
-          <select id="scanDepth">
-            <option value="1">Single factor</option>
-            <option value="2" selected>Pairs of factors</option>
-            <option value="3">Triples (jockey + trainer + one more — slower)</option>
-          </select>
-        </label>
-        <button id="runScanBtn" class="btn btn-brass">Run scan</button>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>Scan for profitable angles <span class="source-tag">racing_results.csv · historic</span></h2>
+            <p class="muted small">Tests values — alone, in pairs, or in triples — across state, track, going, class, day of week, distance, barrier, weight, field size, track rating, jockey, trainer, and running position at the 400m/800m, and ranks them by return on investment.</p>
+          </div>
+        </div>
+        <div class="scan-controls">
+          <label class="small">Minimum sample
+            <input type="number" id="scanMinSample" value="30" min="5" step="5">
+          </label>
+          <label class="small">Rank by
+            <select id="scanMetric">
+              <option value="winROI">Win ROI</option>
+              <option value="placeROI">Place ROI</option>
+            </select>
+          </label>
+          <label class="small">Combination depth
+            <select id="scanDepth">
+              <option value="1">Single factor</option>
+              <option value="2" selected>Pairs of factors</option>
+              <option value="3">Triples (jockey + trainer + one more — slower)</option>
+            </select>
+          </label>
+          <button id="runScanBtn" class="btn btn-primary">Run scan</button>
+        </div>
+        <div class="table-wrap">
+          <table id="scanTable">
+            <thead>
+              <tr>
+                <th>Angle</th>
+                <th class="num">Runs</th>
+                <th class="num">Win strike</th>
+                <th class="num">Win ROI</th>
+                <th class="num">Place ROI</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="scanEmpty" class="empty-note">Run a scan to surface angles worth investigating.</div>
       </div>
-      <div class="table-wrap">
-        <table id="scanTable">
-          <thead>
-            <tr>
-              <th>Angle</th>
-              <th class="num">Runs</th>
-              <th class="num">Win strike</th>
-              <th class="num">Win ROI</th>
-              <th class="num">Place ROI</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <div id="scanEmpty" class="empty-note">Run a scan to surface angles worth investigating.</div>
+
     </section>
 
-    <!-- RESULTS TAB -->
+    <!-- ================= RESULTS TAB ================= -->
     <section class="panel" id="panel-results">
 
-      <div class="panel-head">
-        <h2>Upcoming races that qualify <span class="source-tag">racing_fixtures.csv — upcoming</span></h2>
-        <p class="muted small" id="qualifiersNote">Only pre-race conditions transfer to upcoming fields — outcome fields like SP, finishing position, or sectional running position are ignored here, since they aren't known before the race is run.</p>
-      </div>
-      <div class="table-wrap">
-        <table id="qualifiersTable">
-          <thead></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <div id="qualifiersEmpty" class="empty-note">No upcoming runners match the current conditions.</div>
-
-      <div class="panel-head panel-head-row" style="margin-top:36px;">
-        <div>
-          <h2>Backtested results <span class="source-tag">racing_results.csv — historic</span></h2>
-          <p class="muted small" id="historicSummaryLine">—</p>
+      <div class="card conditions-summary-card">
+        <div class="conditions-summary-head">
+          <h3>Active conditions</h3>
+          <button id="editConditionsBtn" class="btn-text">Edit in Scan →</button>
         </div>
+        <div id="conditionsSummary" class="chip-row"></div>
       </div>
-      <div id="historicPreviewWrap"></div>
 
-      <div id="historicFullWrap" hidden>
-        <div class="chart-wrap">
-          <svg id="profitChart" viewBox="0 0 1000 260" preserveAspectRatio="none"></svg>
-          <div id="chartEmpty" class="empty-note" hidden>No priced, non-scratched runs match the current conditions yet.</div>
+      <section class="board" id="board">
+        <div class="board-cell">
+          <div class="board-value mono" id="statBets">—</div>
+          <div class="board-label">Qualifying runs</div>
         </div>
+        <div class="board-cell">
+          <div class="board-value mono" id="statStrike">—</div>
+          <div class="board-label">Win strike rate</div>
+        </div>
+        <div class="board-cell">
+          <div class="board-value mono" id="statPlaceStrike">—</div>
+          <div class="board-label">Place strike rate</div>
+        </div>
+        <div class="board-cell" id="cellWinRoi">
+          <div class="board-value mono" id="statWinRoi">—</div>
+          <div class="board-label">Win ROI (SP, $1 level)</div>
+        </div>
+        <div class="board-cell" id="cellPlaceRoi">
+          <div class="board-value mono" id="statPlaceRoi">—</div>
+          <div class="board-label">Place ROI</div>
+        </div>
+        <div class="board-cell">
+          <div class="board-value mono" id="statAvgSp">—</div>
+          <div class="board-label">Average SP</div>
+        </div>
+      </section>
 
-        <div class="panel-head panel-head-row">
+      <div class="card">
+        <div class="card-head">
           <div>
-            <h2>All matching runs</h2>
-            <p class="muted small" id="tableCount">—</p>
-          </div>
-          <div class="table-tools">
-            <label class="small muted">Sort
-              <select id="sortField">
-                <option value="date">Date</option>
-                <option value="sp">SP</option>
-                <option value="finish">Finish</option>
-                <option value="winProfit">Profit</option>
-                <option value="track">Track</option>
-              </select>
-            </label>
-            <button id="sortDir" class="btn btn-ghost btn-small">↓ Desc</button>
+            <h2>Upcoming races that qualify <span class="source-tag">racing_fixtures.csv · upcoming</span></h2>
+            <p class="muted small" id="qualifiersNote">Only pre-race conditions transfer to upcoming fields — outcome fields like SP, finishing position, or sectional running position are ignored here, since they aren't known before the race is run.</p>
           </div>
         </div>
         <div class="table-wrap">
-          <table id="resultsTable">
+          <table id="qualifiersTable">
             <thead></thead>
             <tbody></tbody>
           </table>
         </div>
-        <div class="pager" id="pager"></div>
+        <div id="qualifiersEmpty" class="empty-note">No upcoming runners match the current conditions.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>Backtested results <span class="source-tag">racing_results.csv · historic</span></h2>
+            <p class="muted small" id="historicSummaryLine">—</p>
+          </div>
+        </div>
+        <div id="historicPreviewWrap"></div>
+
+        <div id="historicFullWrap" hidden>
+          <div class="chart-wrap">
+            <svg id="profitChart" viewBox="0 0 1000 260" preserveAspectRatio="none"></svg>
+            <div id="chartEmpty" class="empty-note" hidden>No priced, non-scratched runs match the current conditions yet.</div>
+          </div>
+
+          <div class="card-head" style="margin-top:20px;">
+            <div>
+              <h3>All matching runs</h3>
+              <p class="muted small" id="tableCount">—</p>
+            </div>
+            <div class="table-tools">
+              <label class="small muted">Sort
+                <select id="sortField">
+                  <option value="date">Date</option>
+                  <option value="sp">SP</option>
+                  <option value="finish">Finish</option>
+                  <option value="winProfit">Profit</option>
+                  <option value="track">Track</option>
+                </select>
+              </label>
+              <button id="sortDir" class="btn btn-ghost btn-small">↓ Desc</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table id="resultsTable">
+              <thead></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="pager" id="pager"></div>
+        </div>
       </div>
 
     </section>
 
   </main>
 </div>
-
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
@@ -883,7 +863,7 @@ function runScan(rows, { minSample=30, metric='winROI', depth=2 } = {}){
    onto the current conditions (stacked, not replaced) and then picked
    up by the normal eligibleResults()/fixture-matching machinery below —
    there's no separate matching path for "an angle" versus "whatever's
-   in the sidebar"; applying an angle just IS setting conditions. */
+   in Conditions"; applying an angle just IS setting conditions. */
 
 function comboLabel(combo){
   return combo.map(([k,v])=> `${FIELD_MAP[k]?FIELD_MAP[k].label:k}: ${v}`).join(' + ');
@@ -1213,7 +1193,6 @@ function viewAngle(combo){
   STATE.resultsExpanded = false;
   activateTab('results');
   renderAll(true);
-  document.getElementById('sidebar').classList.remove('open');
 }
 
 function miniHistoricTable(rows){
@@ -1275,7 +1254,71 @@ function renderHistoricPreview(rows){
   }
 }
 
+function renderQualifiers(){
+  const preFilters = STATE.filters.filter(f=>!FIELD_MAP[f.key] || !FIELD_MAP[f.key].outcome);
+  const ignoredCount = STATE.filters.length - preFilters.length;
+  const note = document.getElementById('qualifiersNote');
+  note.textContent = ignoredCount>0
+    ? `${ignoredCount} outcome-only condition${ignoredCount>1?'s':''} ignored here — only pre-race conditions transfer to upcoming fields.`
+    : `Showing upcoming runners matching your current conditions.`;
+
+  const matches = STATE.fixtures.filter(r=>!r.scratched && matchesFilters(r, preFilters, {skipOutcome:true}));
+  const thead = document.querySelector('#qualifiersTable thead');
+  const tbody = document.querySelector('#qualifiersTable tbody');
+  const empty = document.getElementById('qualifiersEmpty');
+  thead.innerHTML = `<tr>
+    <th>Date</th><th>State</th><th>Track</th><th>Race</th><th>Horse</th><th>Jockey</th><th>Trainer</th>
+    <th class="num">Barrier</th><th class="num">Weight</th><th>Condition</th>
+  </tr>`;
+  tbody.innerHTML = '';
+  if(matches.length===0){ empty.hidden = false; return; }
+  empty.hidden = true;
+  matches
+    .sort((a,b)=> (a.date&&b.date? a.date-b.date : 0) || (a.track||'').localeCompare(b.track||'') || (Number(a.race)-Number(b.race)))
+    .forEach(r=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${fmtDate(r.date)}</td>
+        <td>${r.state}</td>
+        <td>${r.track}</td>
+        <td>R${r.race}</td>
+        <td>${r.horse}</td>
+        <td>${r.jockey}</td>
+        <td>${r.trainer}</td>
+        <td class="num">${r.barrier ?? '—'}</td>
+        <td class="num">${r.weight ?? '—'}</td>
+        <td>${r.trackcondition||'—'}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+}
+
+function renderConditionsSummary(){
+  const el = document.getElementById('conditionsSummary');
+  if(!el) return;
+  el.innerHTML = '';
+  if(STATE.filters.length===0){
+    const p = document.createElement('p');
+    p.className = 'muted small';
+    p.textContent = 'No conditions set — showing all historic runs and every upcoming runner.';
+    el.appendChild(p);
+    return;
+  }
+  STATE.filters.forEach(f=>{
+    const field = FIELD_MAP[f.key];
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    let label = field ? field.label : f.key;
+    if(f.mode==='categorical') label += ': ' + (f.values.length ? f.values.join(', ') : '(any)');
+    else if(f.mode==='bucket') label += ': ' + f.value;
+    else if(f.mode==='range') label += `: ${f.min ?? '\u2026'}\u2013${f.max ?? '\u2026'}`;
+    chip.textContent = label;
+    el.appendChild(chip);
+  });
+}
+
 function renderResultsPanel(rows){
+  renderConditionsSummary();
   renderQualifiers();
   renderHistoricPreview(rows);
 }
@@ -1299,11 +1342,11 @@ function activateTab(tab){
 function setActiveTab(tab){
   activateTab(tab);
   renderAll(false);
-  document.getElementById('sidebar').classList.remove('open');
 }
 
 function initEvents(){
   document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click', ()=>setActiveTab(t.dataset.tab)));
+  document.getElementById('editConditionsBtn').addEventListener('click', ()=>setActiveTab('scan'));
 
   document.getElementById('addFilterBtn').addEventListener('click', ()=>{
     const key = document.getElementById('newFieldSelect').value;
@@ -1334,10 +1377,6 @@ function initEvents(){
       renderScanTable();
       btn.disabled = false; btn.textContent = 'Run scan';
     }, 30);
-  });
-
-  document.getElementById('drawerToggle').addEventListener('click', ()=>{
-    document.getElementById('sidebar').classList.toggle('open');
   });
 }
 
