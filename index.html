@@ -320,7 +320,7 @@ th.num, td.num{ text-align:right; font-family:var(--font-mono); }
         <div class="card-head">
           <div>
             <h2>Scan for profitable angles <span class="source-tag">racing_results.csv · historic</span></h2>
-            <p class="muted small">Tests values — alone, in pairs, or in triples — across state, track, going, class, day of week, distance, barrier, weight, field size, track rating, jockey, trainer, and running position at the 400m/800m, and ranks them by return on investment.</p>
+            <p class="muted small">Tests values — alone, in pairs, or in triples — across state, track, going, class, day of week, distance, barrier, weight, field size, track rating, jockey, trainer, and each horse's last-start form (finishing position, margin, SP, place price, and running position at the 400m/800m) — and ranks them by return on investment.</p>
           </div>
         </div>
         <div class="scan-controls">
@@ -404,7 +404,7 @@ th.num, td.num{ text-align:right; font-family:var(--font-mono); }
         <div class="card-head">
           <div>
             <h2>Upcoming races that qualify <span class="source-tag">racing_fixtures.csv · upcoming</span></h2>
-            <p class="muted small" id="qualifiersNote">Only pre-race conditions transfer to upcoming fields — outcome fields like SP, finishing position, or sectional running position are ignored here, since they aren't known before the race is run.</p>
+            <p class="muted small" id="qualifiersNote">Every condition here — including last-start form — is knowable before the race, so this list is the same runners a system built from your conditions would flag today.</p>
           </div>
         </div>
         <div class="table-wrap">
@@ -480,7 +480,13 @@ const DOW = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturd
 /* ---------------- field schema ----------------
    mode: 'categorical' | 'numeric'
    both: true if usable for matching upcoming fixtures
-   outcome: true if it can only be known after the race
+   lastStart: true for fields drawn from the horse's PREVIOUS run rather
+   than the race being evaluated — see attachLastStart() below. Every
+   filterable field is knowable before the race it's applied to: "this
+   race's own conditions" fields describe the race itself (today's
+   barrier, today's class, etc.), and "last start" fields describe what
+   already happened last time out. Nothing here is drawn from the outcome
+   of the race being tested.
 ------------------------------------------------- */
 const FIELDS = [
   { key:'state',          label:'State',                mode:'categorical', both:true },
@@ -495,15 +501,15 @@ const FIELDS = [
   { key:'fieldsize',      label:'Field size',            mode:'numeric',     both:true },
   { key:'barrier',        label:'Barrier',                mode:'numeric',     both:true },
   { key:'weight',         label:'Weight (kg)',           mode:'numeric',     both:true },
-  { key:'sp',             label:'Starting price ($)',    mode:'numeric',     both:false, outcome:true },
-  { key:'placeodds',      label:'Place price ($)',       mode:'numeric',     both:false, outcome:true },
-  { key:'finish',         label:'Finishing position',    mode:'numeric',     both:false, outcome:true },
-  { key:'margin',         label:'Margin (lengths)',      mode:'numeric',     both:false, outcome:true },
-  { key:'position400',    label:'Position at 400m',      mode:'numeric',     both:false, outcome:true },
-  { key:'position800',    label:'Position at 800m',      mode:'numeric',     both:false, outcome:true },
+  { key:'prev_sp',          label:'Last start – SP ($)',              mode:'numeric', both:true, lastStart:true },
+  { key:'prev_placeodds',   label:'Last start – place price ($)',     mode:'numeric', both:true, lastStart:true },
+  { key:'prev_finish',      label:'Last start – finishing position',  mode:'numeric', both:true, lastStart:true },
+  { key:'prev_margin',      label:'Last start – margin (lengths)',    mode:'numeric', both:true, lastStart:true },
+  { key:'prev_position400', label:'Last start – position at 400m',    mode:'numeric', both:true, lastStart:true },
+  { key:'prev_position800', label:'Last start – position at 800m',    mode:'numeric', both:true, lastStart:true },
 ];
 const FIELD_MAP = Object.fromEntries(FIELDS.map(f=>[f.key,f]));
-const BUCKET_KEYS = ['distance','barrier','weight','fieldsize','trackrating','position400','position800'];
+const BUCKET_KEYS = ['distance','barrier','weight','fieldsize','trackrating','prev_position400','prev_position800'];
 
 /* Scan dimensions are split into two groups for performance reasons:
    - LOW_CARD: a handful of values each (state, going, class, sectional
@@ -516,7 +522,7 @@ const BUCKET_KEYS = ['distance','barrier','weight','fieldsize','trackrating','po
      combo at this class/distance/track condition" angle within reach
      without the combinatorial blow-up of crossing every named entity with
      every other one. */
-const LOW_CARD_DIMS = ['state','trackcondition','raceclass','dow','distance','barrier','weight','fieldsize','trackrating','position400','position800'];
+const LOW_CARD_DIMS = ['state','trackcondition','raceclass','dow','distance','barrier','weight','fieldsize','trackrating','prev_position400','prev_position800'];
 const NAMED_DIMS = ['track','jockey','trainer'];
 const SINGLE_SCAN_DIMS = [...LOW_CARD_DIMS, ...NAMED_DIMS];
 
@@ -604,8 +610,8 @@ function bucketOf(key, val){
       if(val<=5) return 'Rating 4–5 (good)';
       if(val<=7) return 'Rating 6–7 (soft)';
       return 'Rating 8–10 (heavy)';
-    case 'position400':
-    case 'position800':
+    case 'prev_position400':
+    case 'prev_position800':
       if(val<=2) return 'Led (1st–2nd)';
       if(val<=5) return 'Handy (3rd–5th)';
       if(val<=9) return 'Midfield (6th–9th)';
@@ -652,6 +658,7 @@ function processResultsRows(rows){
     const date = parseDate(getCol(row,ci,'date'));
     const finish = num(getCol(row,ci,'finish'));
     out.push({
+      horseid: getCol(row,ci,'horseid'),
       state: getCol(row,ci,'state'),
       track: getCol(row,ci,'track'),
       race: getCol(row,ci,'race'),
@@ -674,6 +681,10 @@ function processResultsRows(rows){
       placeodds: num(getCol(row,ci,'placeodds')),
       position400: num(getCol(row,ci,'position400')),
       position800: num(getCol(row,ci,'position800')),
+      // populated by attachLastStart() once the full dataset is loaded —
+      // this row's horse's PREVIOUS run, not this run's own outcome
+      prev_sp: null, prev_placeodds: null, prev_finish: null,
+      prev_margin: null, prev_position400: null, prev_position800: null,
     });
   }
   return out;
@@ -688,6 +699,7 @@ function processFixtureRows(rows){
     if(!row || row.length<2) continue;
     const date = parseDate(getCol(row,ci,'date'));
     out.push({
+      horseid: getCol(row,ci,'horseid'),
       state: getCol(row,ci,'state'),
       track: getCol(row,ci,'track'),
       race: getCol(row,ci,'race'),
@@ -706,9 +718,70 @@ function processFixtureRows(rows){
       horse: getCol(row,ci,'name', 0),
       startTime: getCol(row,ci,'start_time'),
       winPrice: num(getCol(row,ci,'win_price')),
+      prev_sp: null, prev_placeodds: null, prev_finish: null,
+      prev_margin: null, prev_position400: null, prev_position800: null,
     });
   }
   return out;
+}
+
+/* ---------------- last-start attachment ----------------
+   Builds, per horse, a chronological list of its historic runs, then
+   stamps every row (both historic results AND upcoming fixtures) with
+   its horse's most recent PRIOR run — never the run/race being
+   evaluated itself. A results row's own finish/margin/sp/placeodds/
+   position400/position800 stay exactly as scraped (they're still used
+   to score whether THAT run was profitable); prev_* is purely additional
+   context copied in from the previous run. A horse's first known start
+   in the dataset simply has no prev_* values, and is naturally excluded
+   by any "last start" filter, which is correct — there's nothing to
+   compare it to. */
+function attachLastStart(results, fixtures){
+  const byHorse = new Map();
+  for(const r of results){
+    if(!r.horseid) continue;
+    if(!byHorse.has(r.horseid)) byHorse.set(r.horseid, []);
+    byHorse.get(r.horseid).push(r);
+  }
+  for(const arr of byHorse.values()){
+    arr.sort((a,b)=>{
+      if(a.date && b.date) return a.date-b.date;
+      if(a.date) return -1;
+      if(b.date) return 1;
+      return 0;
+    });
+    for(let i=1;i<arr.length;i++){
+      const prev = arr[i-1];
+      const cur = arr[i];
+      cur.prev_sp = prev.sp;
+      cur.prev_placeodds = prev.placeodds;
+      cur.prev_finish = prev.finish;
+      cur.prev_margin = prev.margin;
+      cur.prev_position400 = prev.position400;
+      cur.prev_position800 = prev.position800;
+    }
+  }
+  for(const fx of fixtures){
+    if(!fx.horseid) continue;
+    const arr = byHorse.get(fx.horseid);
+    if(!arr || arr.length===0) continue;
+    let prev = null;
+    if(fx.date){
+      for(let i=arr.length-1;i>=0;i--){
+        if(arr[i].date && arr[i].date < fx.date){ prev = arr[i]; break; }
+      }
+    } else {
+      prev = arr[arr.length-1];
+    }
+    if(prev){
+      fx.prev_sp = prev.sp;
+      fx.prev_placeodds = prev.placeodds;
+      fx.prev_finish = prev.finish;
+      fx.prev_margin = prev.margin;
+      fx.prev_position400 = prev.position400;
+      fx.prev_position800 = prev.position800;
+    }
+  }
 }
 
 /* ---------------- filter engine ---------------- */
@@ -894,17 +967,17 @@ function uniqueValues(rows, key){
 function renderFieldSelect(){
   const sel = document.getElementById('newFieldSelect');
   sel.innerHTML = '';
-  const preGroup = document.createElement('optgroup');
-  preGroup.label = 'Pre-race conditions';
-  const outGroup = document.createElement('optgroup');
-  outGroup.label = 'Outcome fields (historic research only)';
+  const raceGroup = document.createElement('optgroup');
+  raceGroup.label = "This race's own conditions";
+  const lastStartGroup = document.createElement('optgroup');
+  lastStartGroup.label = 'Last start (previous race)';
   FIELDS.forEach(f=>{
     const opt = document.createElement('option');
     opt.value = f.key; opt.textContent = f.label;
-    (f.outcome ? outGroup : preGroup).appendChild(opt);
+    (f.lastStart ? lastStartGroup : raceGroup).appendChild(opt);
   });
-  sel.appendChild(preGroup);
-  sel.appendChild(outGroup);
+  sel.appendChild(raceGroup);
+  sel.appendChild(lastStartGroup);
 }
 
 function addFilter(key, presetMode, presetVal){
@@ -1275,8 +1348,7 @@ function renderHistoricPreview(rows){
 }
 
 function renderQualifiers(){
-  const preFilters = STATE.filters.filter(f=>!FIELD_MAP[f.key] || !FIELD_MAP[f.key].outcome);
-  const outcomeOnlyCount = STATE.filters.length - preFilters.length;
+  const applicableFilters = STATE.filters.filter(f=>!FIELD_MAP[f.key] || FIELD_MAP[f.key].both);
   const note = document.getElementById('qualifiersNote');
   const thead = document.querySelector('#qualifiersTable thead');
   const tbody = document.querySelector('#qualifiersTable tbody');
@@ -1287,23 +1359,9 @@ function renderQualifiers(){
   </tr>`;
   tbody.innerHTML = '';
 
-  // If every currently-active condition is outcome-only (e.g. an angle built
-  // purely from running position at the 400m), there's nothing left to check
-  // an upcoming runner against — showing "every fixture" in that case would
-  // be misleading, since none of the angle's conditions were actually
-  // evaluated. Show an explicit empty state instead.
-  if(STATE.filters.length > 0 && preFilters.length === 0){
-    note.textContent = `This angle is based entirely on outcome data (e.g. running position, SP) that isn't known before a race — it can't be checked against upcoming fixtures.`;
-    empty.textContent = 'Add a pre-race condition (class, distance, jockey, trainer, etc.) to see which upcoming runners qualify.';
-    empty.hidden = false;
-    return;
-  }
+  note.textContent = `Showing upcoming runners matching your current conditions — including last-start form, since a horse's previous run is already known.`;
 
-  note.textContent = outcomeOnlyCount>0
-    ? `${outcomeOnlyCount} outcome-only condition${outcomeOnlyCount>1?'s':''} ignored here — only pre-race conditions transfer to upcoming fields.`
-    : `Showing upcoming runners matching your current conditions.`;
-
-  const matches = STATE.fixtures.filter(r=>!r.scratched && matchesFilters(r, preFilters, {skipOutcome:true}));
+  const matches = STATE.fixtures.filter(r=>!r.scratched && matchesFilters(r, applicableFilters));
   empty.textContent = 'No upcoming runners match the current conditions.';
   if(matches.length===0){ empty.hidden = false; return; }
   empty.hidden = true;
@@ -1426,6 +1484,7 @@ async function init(){
     const [resultsRaw, fixturesRaw] = await Promise.all([loadCSV(RESULTS_CSV), loadCSV(FIXTURES_CSV)]);
     STATE.results = processResultsRows(resultsRaw);
     STATE.fixtures = processFixtureRows(fixturesRaw);
+    attachLastStart(STATE.results, STATE.fixtures);
     const dated = STATE.results.filter(r=>r.date);
     const minD = dated.length ? new Date(Math.min(...dated.map(r=>r.date))) : null;
     const maxD = dated.length ? new Date(Math.max(...dated.map(r=>r.date))) : null;
