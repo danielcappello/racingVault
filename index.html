@@ -264,6 +264,30 @@ td.loss{ color:var(--text-muted); }
 .apply-btn{ background:none; border:1px solid var(--brass); color:var(--brass); font-size:11px; padding:4px 9px; white-space:nowrap; }
 .apply-btn:hover{ background:var(--brass); color:#fff; }
 
+.expand-btn{
+  background:none; border:none; padding:0; font:inherit; color:var(--text);
+  text-align:left; cursor:pointer; white-space:normal;
+}
+.expand-btn:hover{ color:var(--brass); }
+.scan-detail-row td{ background:var(--paper-dim); padding:14px 16px 18px; white-space:normal; }
+.scan-detail{ display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+.scan-detail h4{ font-family:var(--font-ui); font-size:12.5px; font-weight:600; margin:0 0 8px; color:var(--text); }
+.mini-table{ width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--line); }
+.mini-table th{ font-size:10px; text-transform:uppercase; letter-spacing:0.3px; color:var(--text-muted); padding:6px 8px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
+.mini-table td{ font-size:12px; padding:6px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
+.mini-table th.num, .mini-table td.num{ text-align:right; font-family:var(--font-mono); }
+.mini-table tbody tr:last-child td{ border-bottom:none; }
+
+.source-tag{
+  display:inline-block; font-family:var(--font-mono); font-size:10.5px;
+  color:var(--text-muted); background:var(--paper-dim); border:1px solid var(--line);
+  padding:2px 7px; margin-left:8px; vertical-align:middle;
+}
+
+@media (max-width:700px){
+  .scan-detail{ grid-template-columns:1fr; }
+}
+
 @media (max-width:900px){
   .app{ grid-template-columns:1fr; }
   .sidebar{
@@ -323,7 +347,7 @@ td.loss{ color:var(--text-muted); }
     </div>
 
     <div class="sidebar-footer">
-      <p class="muted small">Win/place profit assumes level $1 stakes backed at historic starting price. Place = finish in the top 3.</p>
+      <p class="muted small">Win/place profit assumes level $1 stakes backed at historic starting price. Place = finish in the top 3. Conditions here apply everywhere — historic backtesting always reads racing_results.csv, upcoming qualifiers always read racing_fixtures.csv, and the two are never mixed.</p>
     </div>
   </aside>
 
@@ -371,8 +395,8 @@ td.loss{ color:var(--text-muted); }
     <!-- BACKTEST TAB -->
     <section class="panel active" id="panel-backtest">
       <div class="panel-head">
-        <h2>Profit curve</h2>
-        <p class="muted small">Cumulative level-stake profit ($1/bet at SP), in date order, across every qualifying run.</p>
+        <h2>Profit curve <span class="source-tag">racing_results.csv — historic</span></h2>
+        <p class="muted small">Cumulative level-stake profit ($1/bet at SP), in date order, across every qualifying historic run. Only completed races feed this — upcoming fixtures are never included.</p>
       </div>
       <div class="chart-wrap">
         <svg id="profitChart" viewBox="0 0 1000 260" preserveAspectRatio="none"></svg>
@@ -409,8 +433,8 @@ td.loss{ color:var(--text-muted); }
     <!-- SCAN TAB -->
     <section class="panel" id="panel-scan">
       <div class="panel-head">
-        <h2>Scan for profitable angles</h2>
-        <p class="muted small">Tests every value (and, optionally, every pair of values) across the pre-race dimensions below against the runs currently matching your conditions, and ranks them by return on investment.</p>
+        <h2>Scan for profitable angles <span class="source-tag">racing_results.csv — historic</span></h2>
+        <p class="muted small">Tests values — alone, in pairs, or in triples — across state, track, jockey, trainer, class, going, distance, barrier, weight, field size, and running position at the 400m/800m, against the runs currently matching your conditions, and ranks them by return on investment. Click an angle to see exactly which historic races and upcoming runners match it; "Stack into conditions" is additive, so you can layer several angles together.</p>
       </div>
       <div class="scan-controls">
         <label class="small">Minimum sample
@@ -426,6 +450,7 @@ td.loss{ color:var(--text-muted); }
           <select id="scanDepth">
             <option value="1">Single factor</option>
             <option value="2" selected>Pairs of factors</option>
+            <option value="3">Triples (jockey + trainer + one more — slower)</option>
           </select>
         </label>
         <button id="runScanBtn" class="btn btn-brass">Run scan</button>
@@ -451,8 +476,8 @@ td.loss{ color:var(--text-muted); }
     <!-- QUALIFIERS TAB -->
     <section class="panel" id="panel-qualifiers">
       <div class="panel-head">
-        <h2>Upcoming runners matching your conditions</h2>
-        <p class="muted small" id="qualifiersNote">Only pre-race conditions transfer to upcoming fields — outcome fields like SP or finishing position are ignored here, since they aren't known before the race.</p>
+        <h2>Upcoming runners matching your conditions <span class="source-tag">racing_fixtures.csv — upcoming</span></h2>
+        <p class="muted small" id="qualifiersNote">Only pre-race conditions transfer to upcoming fields — outcome fields like SP, finishing position, or sectional running position are ignored here, since they aren't known before the race is run.</p>
       </div>
       <div class="table-wrap">
         <table id="qualifiersTable">
@@ -504,9 +529,22 @@ const FIELDS = [
   { key:'position800',    label:'Position at 800m',      mode:'numeric',     both:false, outcome:true },
 ];
 const FIELD_MAP = Object.fromEntries(FIELDS.map(f=>[f.key,f]));
-const BUCKET_KEYS = ['distance','barrier','weight','fieldsize','trackrating'];
-const SINGLE_SCAN_DIMS = ['state','track','trackcondition','raceclass','jockey','trainer','dow','distance','barrier','weight','fieldsize','trackrating'];
-const PAIR_SCAN_DIMS  = ['state','trackcondition','raceclass','dow','distance','barrier','weight','fieldsize','trackrating'];
+const BUCKET_KEYS = ['distance','barrier','weight','fieldsize','trackrating','position400','position800'];
+
+/* Scan dimensions are split into two groups for performance reasons:
+   - LOW_CARD: a handful of values each (state, going, class, sectional
+     position buckets, etc). These are fully cross-combined in pairs and
+     triples.
+   - NAMED (jockey, trainer, track): thousands of possible values. These
+     are only scanned alone, paired against every LOW_CARD dimension and
+     against each other (jockey+trainer), and — at triple depth — as
+     jockey+trainer+<one LOW_CARD dimension>. That keeps a "jockey/trainer
+     combo at this class/distance/track condition" angle within reach
+     without the combinatorial blow-up of crossing every named entity with
+     every other one. */
+const LOW_CARD_DIMS = ['state','trackcondition','raceclass','dow','distance','barrier','weight','fieldsize','trackrating','position400','position800'];
+const NAMED_DIMS = ['track','jockey','trainer'];
+const SINGLE_SCAN_DIMS = [...LOW_CARD_DIMS, ...NAMED_DIMS];
 
 /* ---------------- app state ---------------- */
 const STATE = {
@@ -583,6 +621,12 @@ function bucketOf(key, val){
       if(val<=5) return 'Rating 4–5 (good)';
       if(val<=7) return 'Rating 6–7 (soft)';
       return 'Rating 8–10 (heavy)';
+    case 'position400':
+    case 'position800':
+      if(val<=2) return 'Led (1st–2nd)';
+      if(val<=5) return 'Handy (3rd–5th)';
+      if(val<=9) return 'Midfield (6th–9th)';
+      return 'Back (10th+)';
     default: return String(val);
   }
 }
@@ -744,11 +788,26 @@ function buildCumulativeSeries(rows){
   });
 }
 
-/* ---------------- scan engine ---------------- */
+/* ---------------- scan engine ----------------
+   Scans historic RESULTS only (STATE.results, via the rows passed in —
+   never fixtures). This is deliberate: an angle's win/place ROI is a
+   read of how it has performed in COMPLETED historic races, and must
+   never be computed against, or contaminated by, rows from the upcoming
+   fixtures file. See comboToMatches() below for how a found angle is
+   then matched separately against past races and against upcoming
+   fixtures.
+------------------------------------------------- */
 function scanValueFor(row, dim){
   if(BUCKET_KEYS.includes(dim)) return bucketOf(dim, row[dim]);
   return row[dim];
 }
+
+// precompute low-card pair/triple index combinations once
+const LOW_PAIR_IDX = (()=>{
+  const out=[];
+  for(let i=0;i<LOW_CARD_DIMS.length;i++) for(let j=i+1;j<LOW_CARD_DIMS.length;j++) out.push([i,j]);
+  return out;
+})();
 
 function runScan(rows, { minSample=30, metric='winROI', depth=2 } = {}){
   const aggs = new Map();
@@ -767,22 +826,39 @@ function runScan(rows, { minSample=30, metric='winROI', depth=2 } = {}){
   }
 
   for(const row of rows){
-    for(const dim of SINGLE_SCAN_DIMS){
-      const v = scanValueFor(row, dim);
-      if(v==null || v==='') continue;
-      addAgg(JSON.stringify([[dim,v]]), row);
+    const lowVals = LOW_CARD_DIMS.map(d=>scanValueFor(row,d));
+    const jockey = row.jockey, trainer = row.trainer, track = row.track;
+
+    // single-factor angles
+    for(let i=0;i<LOW_CARD_DIMS.length;i++){
+      if(lowVals[i]==null || lowVals[i]==='') continue;
+      addAgg(JSON.stringify([[LOW_CARD_DIMS[i],lowVals[i]]]), row);
     }
+    if(track) addAgg(JSON.stringify([['track',track]]), row);
+    if(jockey) addAgg(JSON.stringify([['jockey',jockey]]), row);
+    if(trainer) addAgg(JSON.stringify([['trainer',trainer]]), row);
+
     if(depth>=2){
-      for(let i=0;i<PAIR_SCAN_DIMS.length;i++){
-        const d1 = PAIR_SCAN_DIMS[i];
-        const v1 = scanValueFor(row, d1);
-        if(v1==null || v1==='') continue;
-        for(let j=i+1;j<PAIR_SCAN_DIMS.length;j++){
-          const d2 = PAIR_SCAN_DIMS[j];
-          const v2 = scanValueFor(row, d2);
-          if(v2==null || v2==='') continue;
-          addAgg(JSON.stringify([[d1,v1],[d2,v2]]), row);
-        }
+      // every pair among the low-cardinality dimensions
+      for(const [i,j] of LOW_PAIR_IDX){
+        if(lowVals[i]==null||lowVals[i]===''||lowVals[j]==null||lowVals[j]==='') continue;
+        addAgg(JSON.stringify([[LOW_CARD_DIMS[i],lowVals[i]],[LOW_CARD_DIMS[j],lowVals[j]]]), row);
+      }
+      // the jockey/trainer combo itself
+      if(jockey && trainer) addAgg(JSON.stringify([['jockey',jockey],['trainer',trainer]]), row);
+      // jockey or trainer crossed with each low-card dimension
+      for(let i=0;i<LOW_CARD_DIMS.length;i++){
+        if(lowVals[i]==null || lowVals[i]==='') continue;
+        if(jockey) addAgg(JSON.stringify([['jockey',jockey],[LOW_CARD_DIMS[i],lowVals[i]]]), row);
+        if(trainer) addAgg(JSON.stringify([['trainer',trainer],[LOW_CARD_DIMS[i],lowVals[i]]]), row);
+      }
+    }
+
+    if(depth>=3 && jockey && trainer){
+      // jockey+trainer combo, further narrowed by one low-card dimension
+      for(let i=0;i<LOW_CARD_DIMS.length;i++){
+        if(lowVals[i]==null || lowVals[i]==='') continue;
+        addAgg(JSON.stringify([['jockey',jockey],['trainer',trainer],[LOW_CARD_DIMS[i],lowVals[i]]]), row);
       }
     }
   }
@@ -806,6 +882,41 @@ function runScan(rows, { minSample=30, metric='winROI', depth=2 } = {}){
     return my-mx;
   });
   return out.slice(0,150);
+}
+
+/* ---------------- angle -> matching races -----------------
+   Given a combo (array of [key,value] pairs) produced by the scan, find
+   the actual matching rows: historic ones from STATE.results (always,
+   since it's the only source of past outcomes) and upcoming ones from
+   STATE.fixtures (only for the subset of the combo's dimensions that
+   are knowable before a race — see FIELD_MAP[key].outcome). Both current
+   sidebar conditions still apply, so this is additive/stackable with
+   whatever is already in the filter builder. */
+function comboPredicate(row, combo){
+  for(const [k,v] of combo){
+    if(BUCKET_KEYS.includes(k)){
+      if(bucketOf(k, row[k]) !== v) return false;
+    } else if(row[k] !== v){
+      return false;
+    }
+  }
+  return true;
+}
+
+function comboHistoricMatches(combo){
+  return eligibleResults().filter(r=>comboPredicate(r, combo));
+}
+
+function comboUpcomingMatches(combo){
+  const transferable = combo.filter(([k])=> !(FIELD_MAP[k] && FIELD_MAP[k].outcome));
+  const droppedOutcomeDims = combo.length - transferable.length;
+  const preFilters = STATE.filters.filter(f=>!FIELD_MAP[f.key] || !FIELD_MAP[f.key].outcome);
+  const matches = STATE.fixtures.filter(r=>
+    !r.scratched &&
+    matchesFilters(r, preFilters, {skipOutcome:true}) &&
+    comboPredicate(r, transferable)
+  );
+  return { matches, droppedOutcomeDims };
 }
 
 function comboLabel(combo){
@@ -1106,18 +1217,52 @@ function renderTable(rows){
   pager.appendChild(prev); pager.appendChild(info); pager.appendChild(next);
 }
 
+function raceRowsToHtml(rows, kind){
+  // kind: 'historic' | 'upcoming'
+  if(rows.length===0) return `<p class="muted small">No ${kind==='historic'?'historic runs':'upcoming runners'} match.</p>`;
+  const preview = rows.slice(0, 12);
+  const cols = kind==='historic'
+    ? ['Date','Track','Race','Horse','Jockey','Trainer','SP','Finish','Profit']
+    : ['Date','Track','Race','Horse','Jockey','Trainer','Barrier'];
+  let html = `<table class="mini-table"><thead><tr>${cols.map(c=>`<th${['SP','Finish','Profit','Barrier'].includes(c)?' class="num"':''}>${c}</th>`).join('')}</tr></thead><tbody>`;
+  preview.forEach(r=>{
+    if(kind==='historic'){
+      const profit = r.sp!=null ? (r.finish===1 ? r.sp-1 : -1) : null;
+      html += `<tr>
+        <td>${fmtDate(r.date)}</td><td>${r.track}</td><td>R${r.race}</td><td>${r.horse}</td>
+        <td>${r.jockey}</td><td>${r.trainer}</td>
+        <td class="num">${r.sp!=null?'$'+r.sp.toFixed(2):'—'}</td>
+        <td class="num">${r.finish ?? '—'}</td>
+        <td class="num ${profit>0?'profit-pos':profit<0?'profit-neg':''}">${profit!=null?money(profit):'—'}</td>
+      </tr>`;
+    } else {
+      html += `<tr>
+        <td>${fmtDate(r.date)}</td><td>${r.track}</td><td>R${r.race}</td><td>${r.horse}</td>
+        <td>${r.jockey}</td><td>${r.trainer}</td>
+        <td class="num">${r.barrier ?? '—'}</td>
+      </tr>`;
+    }
+  });
+  html += '</tbody></table>';
+  if(rows.length > preview.length){
+    html += `<p class="muted small">+ ${(rows.length-preview.length).toLocaleString()} more — apply this angle to your conditions to see the rest in ${kind==='historic'?'Backtest':"Today's qualifiers"}.</p>`;
+  }
+  return html;
+}
+
 function renderScanTable(){
   const tbody = document.querySelector('#scanTable tbody');
   const empty = document.getElementById('scanEmpty');
   tbody.innerHTML = '';
   if(STATE.scan.length===0){ empty.hidden = false; return; }
   empty.hidden = true;
-  STATE.scan.forEach(row=>{
+  STATE.scan.forEach((row, idx)=>{
     const tr = document.createElement('tr');
+    tr.className = 'scan-row';
     const roiClass = (row.winROI>0) ? 'profit-pos' : (row.winROI<0 ? 'profit-neg' : '');
     const proiClass = (row.placeROI>0) ? 'profit-pos' : (row.placeROI<0 ? 'profit-neg' : '');
     tr.innerHTML = `
-      <td>${comboLabel(row.combo)}</td>
+      <td><button class="expand-btn" data-idx="${idx}">▸ ${comboLabel(row.combo)}</button></td>
       <td class="num">${row.n.toLocaleString()}</td>
       <td class="num">${row.strikeRate.toFixed(1)}%</td>
       <td class="num ${roiClass}">${pct(row.winROI)}</td>
@@ -1125,13 +1270,52 @@ function renderScanTable(){
       <td></td>
     `;
     const btn = document.createElement('button');
-    btn.className = 'apply-btn'; btn.textContent = 'Apply';
+    btn.className = 'apply-btn'; btn.textContent = '+ Stack into conditions';
+    btn.title = 'Adds this angle to your current conditions (keeps anything already set)';
     btn.onclick = ()=>{
       addFilters(comboToFilters(row.combo));
       document.querySelector('.tab[data-tab="backtest"]').click();
     };
     tr.lastElementChild.appendChild(btn);
     tbody.appendChild(tr);
+
+    const detailTr = document.createElement('tr');
+    detailTr.className = 'scan-detail-row';
+    detailTr.hidden = true;
+    const detailTd = document.createElement('td');
+    detailTd.colSpan = 6;
+    detailTr.appendChild(detailTd);
+    tbody.appendChild(detailTr);
+
+    tr.querySelector('.expand-btn').addEventListener('click', ()=>{
+      const willOpen = detailTr.hidden;
+      // collapse any other open rows
+      tbody.querySelectorAll('.scan-detail-row').forEach(d=>{ d.hidden = true; });
+      tbody.querySelectorAll('.expand-btn').forEach(b=>{ b.textContent = b.textContent.replace('▾','▸'); });
+      if(!willOpen) return;
+      detailTr.hidden = false;
+      tr.querySelector('.expand-btn').textContent = tr.querySelector('.expand-btn').textContent.replace('▸','▾');
+      if(!detailTd.dataset.built){
+        const historic = comboHistoricMatches(row.combo).sort((a,b)=>b.date-a.date);
+        const { matches: upcoming, droppedOutcomeDims } = comboUpcomingMatches(row.combo);
+        const upcomingNote = droppedOutcomeDims>0
+          ? `<p class="muted small">This angle includes ${droppedOutcomeDims} outcome-only condition${droppedOutcomeDims>1?'s':''} (only known once a race is run), so it can't be matched to upcoming fixtures on that part — the remaining conditions are still applied below.</p>`
+          : '';
+        detailTd.innerHTML = `
+          <div class="scan-detail">
+            <div class="scan-detail-col">
+              <h4>Historic races that match <span class="muted small">(racing_results.csv · ${historic.length.toLocaleString()})</span></h4>
+              ${raceRowsToHtml(historic,'historic')}
+            </div>
+            <div class="scan-detail-col">
+              <h4>Upcoming runners that qualify <span class="muted small">(racing_fixtures.csv · ${upcoming.length.toLocaleString()})</span></h4>
+              ${upcomingNote}
+              ${raceRowsToHtml(upcoming,'upcoming')}
+            </div>
+          </div>`;
+        detailTd.dataset.built = '1';
+      }
+    });
   });
 }
 
