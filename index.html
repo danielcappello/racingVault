@@ -264,14 +264,6 @@ td.loss{ color:var(--text-muted); }
 .apply-btn{ background:none; border:1px solid var(--brass); color:var(--brass); font-size:11px; padding:4px 9px; white-space:nowrap; }
 .apply-btn:hover{ background:var(--brass); color:#fff; }
 
-.expand-btn{
-  background:none; border:none; padding:0; font:inherit; color:var(--text);
-  text-align:left; cursor:pointer; white-space:normal;
-}
-.expand-btn:hover{ color:var(--brass); }
-.scan-detail-row td{ background:var(--paper-dim); padding:14px 16px 18px; white-space:normal; }
-.scan-detail{ display:grid; grid-template-columns:1fr 1fr; gap:24px; }
-.scan-detail h4{ font-family:var(--font-ui); font-size:12.5px; font-weight:600; margin:0 0 8px; color:var(--text); }
 .mini-table{ width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--line); }
 .mini-table th{ font-size:10px; text-transform:uppercase; letter-spacing:0.3px; color:var(--text-muted); padding:6px 8px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
 .mini-table td{ font-size:12px; padding:6px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
@@ -282,10 +274,6 @@ td.loss{ color:var(--text-muted); }
   display:inline-block; font-family:var(--font-mono); font-size:10.5px;
   color:var(--text-muted); background:var(--paper-dim); border:1px solid var(--line);
   padding:2px 7px; margin-left:8px; vertical-align:middle;
-}
-
-@media (max-width:700px){
-  .scan-detail{ grid-template-columns:1fr; }
 }
 
 @media (max-width:900px){
@@ -359,9 +347,8 @@ td.loss{ color:var(--text-muted); }
         <span id="statusText">Loading historic form and fixtures…</span>
       </div>
       <nav class="tabs" id="tabs">
-        <button class="tab active" data-tab="backtest">Backtest</button>
-        <button class="tab" data-tab="scan">Scan for angles</button>
-        <button class="tab" data-tab="qualifiers">Today's qualifiers</button>
+        <button class="tab active" data-tab="scan">Scan for angles</button>
+        <button class="tab" data-tab="results">Results</button>
       </nav>
     </header>
 
@@ -392,49 +379,11 @@ td.loss{ color:var(--text-muted); }
       </div>
     </section>
 
-    <!-- BACKTEST TAB -->
-    <section class="panel active" id="panel-backtest">
-      <div class="panel-head">
-        <h2>Profit curve <span class="source-tag">racing_results.csv — historic</span></h2>
-        <p class="muted small">Cumulative level-stake profit ($1/bet at SP), in date order, across every qualifying historic run. Only completed races feed this — upcoming fixtures are never included.</p>
-      </div>
-      <div class="chart-wrap">
-        <svg id="profitChart" viewBox="0 0 1000 260" preserveAspectRatio="none"></svg>
-        <div id="chartEmpty" class="empty-note" hidden>No priced, non-scratched runs match the current conditions yet.</div>
-      </div>
-
-      <div class="panel-head panel-head-row">
-        <div>
-          <h2>Matching runs</h2>
-          <p class="muted small" id="tableCount">—</p>
-        </div>
-        <div class="table-tools">
-          <label class="small muted">Sort
-            <select id="sortField">
-              <option value="date">Date</option>
-              <option value="sp">SP</option>
-              <option value="finish">Finish</option>
-              <option value="winProfit">Profit</option>
-              <option value="track">Track</option>
-            </select>
-          </label>
-          <button id="sortDir" class="btn btn-ghost btn-small">↓ Desc</button>
-        </div>
-      </div>
-      <div class="table-wrap">
-        <table id="resultsTable">
-          <thead></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <div class="pager" id="pager"></div>
-    </section>
-
-    <!-- SCAN TAB -->
-    <section class="panel" id="panel-scan">
+    <!-- SCAN TAB (landing page) -->
+    <section class="panel active" id="panel-scan">
       <div class="panel-head">
         <h2>Scan for profitable angles <span class="source-tag">racing_results.csv — historic</span></h2>
-        <p class="muted small">Tests values — alone, in pairs, or in triples — across state, track, jockey, trainer, class, going, distance, barrier, weight, field size, and running position at the 400m/800m, against the runs currently matching your conditions, and ranks them by return on investment. Click an angle to see exactly which historic races and upcoming runners match it; "Stack into conditions" is additive, so you can layer several angles together.</p>
+        <p class="muted small">Start here. Set any starting conditions in the sidebar (optional), then run a scan — it tests values, alone or combined, across state, track, going, class, day of week, distance, barrier, weight, field size, track rating, jockey, trainer, and running position at the 400m/800m, and ranks them by return on investment. Pick an angle to see exactly which upcoming runners and historic races match it.</p>
       </div>
       <div class="scan-controls">
         <label class="small">Minimum sample
@@ -473,10 +422,11 @@ td.loss{ color:var(--text-muted); }
       <div id="scanEmpty" class="empty-note">Run a scan to surface angles worth investigating.</div>
     </section>
 
-    <!-- QUALIFIERS TAB -->
-    <section class="panel" id="panel-qualifiers">
+    <!-- RESULTS TAB -->
+    <section class="panel" id="panel-results">
+
       <div class="panel-head">
-        <h2>Upcoming runners matching your conditions <span class="source-tag">racing_fixtures.csv — upcoming</span></h2>
+        <h2>Upcoming races that qualify <span class="source-tag">racing_fixtures.csv — upcoming</span></h2>
         <p class="muted small" id="qualifiersNote">Only pre-race conditions transfer to upcoming fields — outcome fields like SP, finishing position, or sectional running position are ignored here, since they aren't known before the race is run.</p>
       </div>
       <div class="table-wrap">
@@ -486,10 +436,53 @@ td.loss{ color:var(--text-muted); }
         </table>
       </div>
       <div id="qualifiersEmpty" class="empty-note">No upcoming runners match the current conditions.</div>
+
+      <div class="panel-head panel-head-row" style="margin-top:36px;">
+        <div>
+          <h2>Backtested results <span class="source-tag">racing_results.csv — historic</span></h2>
+          <p class="muted small" id="historicSummaryLine">—</p>
+        </div>
+      </div>
+      <div id="historicPreviewWrap"></div>
+
+      <div id="historicFullWrap" hidden>
+        <div class="chart-wrap">
+          <svg id="profitChart" viewBox="0 0 1000 260" preserveAspectRatio="none"></svg>
+          <div id="chartEmpty" class="empty-note" hidden>No priced, non-scratched runs match the current conditions yet.</div>
+        </div>
+
+        <div class="panel-head panel-head-row">
+          <div>
+            <h2>All matching runs</h2>
+            <p class="muted small" id="tableCount">—</p>
+          </div>
+          <div class="table-tools">
+            <label class="small muted">Sort
+              <select id="sortField">
+                <option value="date">Date</option>
+                <option value="sp">SP</option>
+                <option value="finish">Finish</option>
+                <option value="winProfit">Profit</option>
+                <option value="track">Track</option>
+              </select>
+            </label>
+            <button id="sortDir" class="btn btn-ghost btn-small">↓ Desc</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="resultsTable">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="pager" id="pager"></div>
+      </div>
+
     </section>
 
   </main>
 </div>
+
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
@@ -556,7 +549,8 @@ const STATE = {
   pageSize: 50,
   sortField: 'date',
   sortDir: 'desc',
-  activeTab: 'backtest',
+  activeTab: 'scan',
+  resultsExpanded: false,
 };
 let filterSeq = 1;
 
@@ -884,40 +878,12 @@ function runScan(rows, { minSample=30, metric='winROI', depth=2 } = {}){
   return out.slice(0,150);
 }
 
-/* ---------------- angle -> matching races -----------------
-   Given a combo (array of [key,value] pairs) produced by the scan, find
-   the actual matching rows: historic ones from STATE.results (always,
-   since it's the only source of past outcomes) and upcoming ones from
-   STATE.fixtures (only for the subset of the combo's dimensions that
-   are knowable before a race — see FIELD_MAP[key].outcome). Both current
-   sidebar conditions still apply, so this is additive/stackable with
-   whatever is already in the filter builder. */
-function comboPredicate(row, combo){
-  for(const [k,v] of combo){
-    if(BUCKET_KEYS.includes(k)){
-      if(bucketOf(k, row[k]) !== v) return false;
-    } else if(row[k] !== v){
-      return false;
-    }
-  }
-  return true;
-}
-
-function comboHistoricMatches(combo){
-  return eligibleResults().filter(r=>comboPredicate(r, combo));
-}
-
-function comboUpcomingMatches(combo){
-  const transferable = combo.filter(([k])=> !(FIELD_MAP[k] && FIELD_MAP[k].outcome));
-  const droppedOutcomeDims = combo.length - transferable.length;
-  const preFilters = STATE.filters.filter(f=>!FIELD_MAP[f.key] || !FIELD_MAP[f.key].outcome);
-  const matches = STATE.fixtures.filter(r=>
-    !r.scratched &&
-    matchesFilters(r, preFilters, {skipOutcome:true}) &&
-    comboPredicate(r, transferable)
-  );
-  return { matches, droppedOutcomeDims };
-}
+/* ---------------- angle -> filters -----------------
+   Turns a scan combo straight into filter objects so it can be pushed
+   onto the current conditions (stacked, not replaced) and then picked
+   up by the normal eligibleResults()/fixture-matching machinery below —
+   there's no separate matching path for "an angle" versus "whatever's
+   in the sidebar"; applying an angle just IS setting conditions. */
 
 function comboLabel(combo){
   return combo.map(([k,v])=> `${FIELD_MAP[k]?FIELD_MAP[k].label:k}: ${v}`).join(' + ');
@@ -967,12 +933,6 @@ function addFilter(key, presetMode, presetVal){
     filter = { id:filterSeq++, key, mode:'range', min:null, max:null };
   }
   STATE.filters.push(filter);
-  STATE.page = 1;
-  renderAll();
-}
-
-function addFilters(list){
-  STATE.filters.push(...list);
   STATE.page = 1;
   renderAll();
 }
@@ -1217,52 +1177,18 @@ function renderTable(rows){
   pager.appendChild(prev); pager.appendChild(info); pager.appendChild(next);
 }
 
-function raceRowsToHtml(rows, kind){
-  // kind: 'historic' | 'upcoming'
-  if(rows.length===0) return `<p class="muted small">No ${kind==='historic'?'historic runs':'upcoming runners'} match.</p>`;
-  const preview = rows.slice(0, 12);
-  const cols = kind==='historic'
-    ? ['Date','Track','Race','Horse','Jockey','Trainer','SP','Finish','Profit']
-    : ['Date','Track','Race','Horse','Jockey','Trainer','Barrier'];
-  let html = `<table class="mini-table"><thead><tr>${cols.map(c=>`<th${['SP','Finish','Profit','Barrier'].includes(c)?' class="num"':''}>${c}</th>`).join('')}</tr></thead><tbody>`;
-  preview.forEach(r=>{
-    if(kind==='historic'){
-      const profit = r.sp!=null ? (r.finish===1 ? r.sp-1 : -1) : null;
-      html += `<tr>
-        <td>${fmtDate(r.date)}</td><td>${r.track}</td><td>R${r.race}</td><td>${r.horse}</td>
-        <td>${r.jockey}</td><td>${r.trainer}</td>
-        <td class="num">${r.sp!=null?'$'+r.sp.toFixed(2):'—'}</td>
-        <td class="num">${r.finish ?? '—'}</td>
-        <td class="num ${profit>0?'profit-pos':profit<0?'profit-neg':''}">${profit!=null?money(profit):'—'}</td>
-      </tr>`;
-    } else {
-      html += `<tr>
-        <td>${fmtDate(r.date)}</td><td>${r.track}</td><td>R${r.race}</td><td>${r.horse}</td>
-        <td>${r.jockey}</td><td>${r.trainer}</td>
-        <td class="num">${r.barrier ?? '—'}</td>
-      </tr>`;
-    }
-  });
-  html += '</tbody></table>';
-  if(rows.length > preview.length){
-    html += `<p class="muted small">+ ${(rows.length-preview.length).toLocaleString()} more — apply this angle to your conditions to see the rest in ${kind==='historic'?'Backtest':"Today's qualifiers"}.</p>`;
-  }
-  return html;
-}
-
 function renderScanTable(){
   const tbody = document.querySelector('#scanTable tbody');
   const empty = document.getElementById('scanEmpty');
   tbody.innerHTML = '';
   if(STATE.scan.length===0){ empty.hidden = false; return; }
   empty.hidden = true;
-  STATE.scan.forEach((row, idx)=>{
+  STATE.scan.forEach(row=>{
     const tr = document.createElement('tr');
-    tr.className = 'scan-row';
     const roiClass = (row.winROI>0) ? 'profit-pos' : (row.winROI<0 ? 'profit-neg' : '');
     const proiClass = (row.placeROI>0) ? 'profit-pos' : (row.placeROI<0 ? 'profit-neg' : '');
     tr.innerHTML = `
-      <td><button class="expand-btn" data-idx="${idx}">▸ ${comboLabel(row.combo)}</button></td>
+      <td>${comboLabel(row.combo)}</td>
       <td class="num">${row.n.toLocaleString()}</td>
       <td class="num">${row.strikeRate.toFixed(1)}%</td>
       <td class="num ${roiClass}">${pct(row.winROI)}</td>
@@ -1270,92 +1196,88 @@ function renderScanTable(){
       <td></td>
     `;
     const btn = document.createElement('button');
-    btn.className = 'apply-btn'; btn.textContent = '+ Stack into conditions';
-    btn.title = 'Adds this angle to your current conditions (keeps anything already set)';
-    btn.onclick = ()=>{
-      addFilters(comboToFilters(row.combo));
-      document.querySelector('.tab[data-tab="backtest"]').click();
-    };
+    btn.className = 'apply-btn'; btn.textContent = 'View matching races →';
+    btn.title = 'Adds this angle to your conditions and shows the upcoming runners and historic form that match it';
+    btn.onclick = ()=>viewAngle(row.combo);
     tr.lastElementChild.appendChild(btn);
     tbody.appendChild(tr);
-
-    const detailTr = document.createElement('tr');
-    detailTr.className = 'scan-detail-row';
-    detailTr.hidden = true;
-    const detailTd = document.createElement('td');
-    detailTd.colSpan = 6;
-    detailTr.appendChild(detailTd);
-    tbody.appendChild(detailTr);
-
-    tr.querySelector('.expand-btn').addEventListener('click', ()=>{
-      const willOpen = detailTr.hidden;
-      // collapse any other open rows
-      tbody.querySelectorAll('.scan-detail-row').forEach(d=>{ d.hidden = true; });
-      tbody.querySelectorAll('.expand-btn').forEach(b=>{ b.textContent = b.textContent.replace('▾','▸'); });
-      if(!willOpen) return;
-      detailTr.hidden = false;
-      tr.querySelector('.expand-btn').textContent = tr.querySelector('.expand-btn').textContent.replace('▸','▾');
-      if(!detailTd.dataset.built){
-        const historic = comboHistoricMatches(row.combo).sort((a,b)=>b.date-a.date);
-        const { matches: upcoming, droppedOutcomeDims } = comboUpcomingMatches(row.combo);
-        const upcomingNote = droppedOutcomeDims>0
-          ? `<p class="muted small">This angle includes ${droppedOutcomeDims} outcome-only condition${droppedOutcomeDims>1?'s':''} (only known once a race is run), so it can't be matched to upcoming fixtures on that part — the remaining conditions are still applied below.</p>`
-          : '';
-        detailTd.innerHTML = `
-          <div class="scan-detail">
-            <div class="scan-detail-col">
-              <h4>Historic races that match <span class="muted small">(racing_results.csv · ${historic.length.toLocaleString()})</span></h4>
-              ${raceRowsToHtml(historic,'historic')}
-            </div>
-            <div class="scan-detail-col">
-              <h4>Upcoming runners that qualify <span class="muted small">(racing_fixtures.csv · ${upcoming.length.toLocaleString()})</span></h4>
-              ${upcomingNote}
-              ${raceRowsToHtml(upcoming,'upcoming')}
-            </div>
-          </div>`;
-        detailTd.dataset.built = '1';
-      }
-    });
   });
 }
 
-function renderQualifiers(){
-  const preFilters = STATE.filters.filter(f=>!FIELD_MAP[f.key] || !FIELD_MAP[f.key].outcome);
-  const ignoredCount = STATE.filters.length - preFilters.length;
-  const note = document.getElementById('qualifiersNote');
-  note.textContent = ignoredCount>0
-    ? `${ignoredCount} outcome-only condition${ignoredCount>1?'s':''} ignored here — only pre-race conditions transfer to upcoming fields.`
-    : `Showing upcoming runners matching your current conditions.`;
+/* Applying an angle stacks it onto whatever conditions are already set
+   (never replaces them), then jumps to Results so the person immediately
+   sees the upcoming qualifiers and the historic form behind the angle. */
+function viewAngle(combo){
+  STATE.filters.push(...comboToFilters(combo));
+  STATE.page = 1;
+  STATE.resultsExpanded = false;
+  activateTab('results');
+  renderAll(true);
+  document.getElementById('sidebar').classList.remove('open');
+}
 
-  const matches = STATE.fixtures.filter(r=>!r.scratched && matchesFilters(r, preFilters, {skipOutcome:true}));
-  const thead = document.querySelector('#qualifiersTable thead');
-  const tbody = document.querySelector('#qualifiersTable tbody');
-  const empty = document.getElementById('qualifiersEmpty');
-  thead.innerHTML = `<tr>
-    <th>Date</th><th>State</th><th>Track</th><th>Race</th><th>Horse</th><th>Jockey</th><th>Trainer</th>
-    <th class="num">Barrier</th><th class="num">Weight</th><th>Condition</th>
-  </tr>`;
-  tbody.innerHTML = '';
-  if(matches.length===0){ empty.hidden = false; return; }
-  empty.hidden = true;
-  matches
-    .sort((a,b)=> (a.date&&b.date? a.date-b.date : 0) || (a.track||'').localeCompare(b.track||'') || (Number(a.race)-Number(b.race)))
-    .forEach(r=>{
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${fmtDate(r.date)}</td>
-        <td>${r.state}</td>
-        <td>${r.track}</td>
-        <td>R${r.race}</td>
-        <td>${r.horse}</td>
-        <td>${r.jockey}</td>
-        <td>${r.trainer}</td>
-        <td class="num">${r.barrier ?? '—'}</td>
-        <td class="num">${r.weight ?? '—'}</td>
-        <td>${r.trackcondition||'—'}</td>
-      `;
-      tbody.appendChild(tr);
-    });
+function miniHistoricTable(rows){
+  if(rows.length===0) return '<p class="muted small">No historic runs match your conditions yet — try loosening one of them.</p>';
+  const preview = rows.slice(0, 8);
+  let html = `<table class="mini-table"><thead><tr>
+    <th>Date</th><th>Track</th><th>Race</th><th>Horse</th><th>Jockey</th><th>Trainer</th>
+    <th class="num">SP</th><th class="num">Finish</th><th class="num">Profit</th>
+  </tr></thead><tbody>`;
+  preview.forEach(r=>{
+    const profit = r.sp!=null ? (r.finish===1 ? r.sp-1 : -1) : null;
+    html += `<tr>
+      <td>${fmtDate(r.date)}</td><td>${r.track}</td><td>R${r.race}</td><td>${r.horse}</td>
+      <td>${r.jockey}</td><td>${r.trainer}</td>
+      <td class="num">${r.sp!=null?'$'+r.sp.toFixed(2):'—'}</td>
+      <td class="num">${r.finish ?? '—'}</td>
+      <td class="num ${profit>0?'profit-pos':profit<0?'profit-neg':''}">${profit!=null?money(profit):'—'}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  return html;
+}
+
+function renderHistoricPreview(rows){
+  const summaryLine = document.getElementById('historicSummaryLine');
+  const previewWrap = document.getElementById('historicPreviewWrap');
+  const fullWrap = document.getElementById('historicFullWrap');
+  const summary = computeSummary(rows);
+
+  summaryLine.textContent = rows.length
+    ? `${rows.length.toLocaleString()} historic runs match your conditions · ${summary.strikeRate!=null?summary.strikeRate.toFixed(1)+'%':'—'} win strike rate · ${pct(summary.winROI)} win ROI`
+    : 'No historic runs match your conditions yet.';
+
+  previewWrap.innerHTML = '';
+
+  if(STATE.resultsExpanded){
+    fullWrap.hidden = false;
+    const collapseBtn = document.createElement('button');
+    collapseBtn.className = 'btn btn-ghost btn-small';
+    collapseBtn.textContent = '▴ Collapse to preview';
+    collapseBtn.onclick = ()=>{ STATE.resultsExpanded = false; renderAll(false); };
+    previewWrap.appendChild(collapseBtn);
+    renderChart(rows);
+    renderTable(rows);
+  } else {
+    fullWrap.hidden = true;
+    const sorted = [...rows].filter(r=>r.date).sort((a,b)=>b.date-a.date);
+    const table = document.createElement('div');
+    table.innerHTML = miniHistoricTable(sorted);
+    previewWrap.appendChild(table);
+    if(rows.length > 0){
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-brass btn-small';
+      btn.style.marginTop = '10px';
+      btn.textContent = `View all ${rows.length.toLocaleString()} historic results →`;
+      btn.onclick = ()=>{ STATE.resultsExpanded = true; renderAll(false); };
+      previewWrap.appendChild(btn);
+    }
+  }
+}
+
+function renderResultsPanel(rows){
+  renderQualifiers();
+  renderHistoricPreview(rows);
 }
 
 function renderAll(refreshFilterUI=true){
@@ -1363,19 +1285,19 @@ function renderAll(refreshFilterUI=true){
   const summary = computeSummary(rows);
   renderBoard(rows, summary);
   if(refreshFilterUI) renderFilterList();
-  if(STATE.activeTab==='backtest'){
-    renderChart(rows);
-    renderTable(rows);
-  } else if(STATE.activeTab==='qualifiers'){
-    renderQualifiers();
+  if(STATE.activeTab==='results'){
+    renderResultsPanel(rows);
   }
 }
 
 /* ---------------- wiring ---------------- */
-function setActiveTab(tab){
+function activateTab(tab){
   STATE.activeTab = tab;
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===tab));
   document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active', p.id==='panel-'+tab));
+}
+function setActiveTab(tab){
+  activateTab(tab);
   renderAll(false);
   document.getElementById('sidebar').classList.remove('open');
 }
