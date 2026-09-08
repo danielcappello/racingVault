@@ -423,14 +423,15 @@ th.num, td.num{ text-align:right; font-family:var(--font-mono); }
             <p class="muted small" id="historicSummaryLine">—</p>
           </div>
         </div>
+
+        <div class="chart-wrap">
+          <svg id="profitChart" viewBox="0 0 1000 260" preserveAspectRatio="none"></svg>
+          <div id="chartEmpty" class="empty-note" hidden>No priced, non-scratched runs match the current conditions yet.</div>
+        </div>
+
         <div id="historicPreviewWrap"></div>
 
         <div id="historicFullWrap" hidden>
-          <div class="chart-wrap">
-            <svg id="profitChart" viewBox="0 0 1000 260" preserveAspectRatio="none"></svg>
-            <div id="chartEmpty" class="empty-note" hidden>No priced, non-scratched runs match the current conditions yet.</div>
-          </div>
-
           <div class="card-head" style="margin-top:20px;">
             <div>
               <h3>All matching runs</h3>
@@ -556,6 +557,14 @@ function parseDateISO(s){
   const dt = new Date(s+'T00:00:00');
   return isNaN(dt) ? null : dt;
 }
+/* Auto-detects DD/MM/YYYY vs YYYY-MM-DD so the app keeps working if a
+   production export uses a different date format than the sample files. */
+function parseDate(s){
+  if(!s) return null;
+  const str = String(s).trim();
+  if(!str) return null;
+  return str.includes('-') ? parseDateISO(str) : parseDateDMY(str);
+}
 function fmtDate(d){
   if(!d) return '—';
   return d.toLocaleDateString('en-AU', { day:'2-digit', month:'short', year:'numeric' });
@@ -640,7 +649,7 @@ function processResultsRows(rows){
   for(let i=1;i<rows.length;i++){
     const row = rows[i];
     if(!row || row.length<2) continue;
-    const date = parseDateDMY(getCol(row,ci,'date'));
+    const date = parseDate(getCol(row,ci,'date'));
     const finish = num(getCol(row,ci,'finish'));
     out.push({
       state: getCol(row,ci,'state'),
@@ -677,8 +686,7 @@ function processFixtureRows(rows){
   for(let i=1;i<rows.length;i++){
     const row = rows[i];
     if(!row || row.length<2) continue;
-    const dateRaw = getCol(row,ci,'date');
-    const date = dateRaw.includes('-') ? parseDateISO(dateRaw) : parseDateDMY(dateRaw);
+    const date = parseDate(getCol(row,ci,'date'));
     out.push({
       state: getCol(row,ci,'state'),
       track: getCol(row,ci,'track'),
@@ -1226,6 +1234,11 @@ function renderHistoricPreview(rows){
     ? `${rows.length.toLocaleString()} historic runs match your conditions · ${summary.strikeRate!=null?summary.strikeRate.toFixed(1)+'%':'—'} win strike rate · ${pct(summary.winROI)} win ROI`
     : 'No historic runs match your conditions yet.';
 
+  // The cumulative profit chart is always visible — it's the headline
+  // number for "is this angle profitable", not something to hide behind
+  // a toggle.
+  renderChart(rows);
+
   previewWrap.innerHTML = '';
 
   if(STATE.resultsExpanded){
@@ -1235,17 +1248,24 @@ function renderHistoricPreview(rows){
     collapseBtn.textContent = '▴ Collapse to preview';
     collapseBtn.onclick = ()=>{ STATE.resultsExpanded = false; renderAll(false); };
     previewWrap.appendChild(collapseBtn);
-    renderChart(rows);
     renderTable(rows);
   } else {
     fullWrap.hidden = true;
-    const sorted = [...rows].filter(r=>r.date).sort((a,b)=>b.date-a.date);
+    // Sort by date (most recent first); rows with an unparsed/missing date
+    // are pushed to the end rather than dropped, so the preview never goes
+    // empty just because a handful of rows lack a clean date.
+    const sorted = [...rows].sort((a,b)=>{
+      if(a.date && b.date) return b.date - a.date;
+      if(a.date) return -1;
+      if(b.date) return 1;
+      return 0;
+    });
     const table = document.createElement('div');
     table.innerHTML = miniHistoricTable(sorted);
     previewWrap.appendChild(table);
     if(rows.length > 0){
       const btn = document.createElement('button');
-      btn.className = 'btn btn-brass btn-small';
+      btn.className = 'btn btn-primary btn-small';
       btn.style.marginTop = '10px';
       btn.textContent = `View all ${rows.length.toLocaleString()} historic results →`;
       btn.onclick = ()=>{ STATE.resultsExpanded = true; renderAll(false); };
@@ -1256,13 +1276,8 @@ function renderHistoricPreview(rows){
 
 function renderQualifiers(){
   const preFilters = STATE.filters.filter(f=>!FIELD_MAP[f.key] || !FIELD_MAP[f.key].outcome);
-  const ignoredCount = STATE.filters.length - preFilters.length;
+  const outcomeOnlyCount = STATE.filters.length - preFilters.length;
   const note = document.getElementById('qualifiersNote');
-  note.textContent = ignoredCount>0
-    ? `${ignoredCount} outcome-only condition${ignoredCount>1?'s':''} ignored here — only pre-race conditions transfer to upcoming fields.`
-    : `Showing upcoming runners matching your current conditions.`;
-
-  const matches = STATE.fixtures.filter(r=>!r.scratched && matchesFilters(r, preFilters, {skipOutcome:true}));
   const thead = document.querySelector('#qualifiersTable thead');
   const tbody = document.querySelector('#qualifiersTable tbody');
   const empty = document.getElementById('qualifiersEmpty');
@@ -1271,6 +1286,25 @@ function renderQualifiers(){
     <th class="num">Barrier</th><th class="num">Weight</th><th>Condition</th>
   </tr>`;
   tbody.innerHTML = '';
+
+  // If every currently-active condition is outcome-only (e.g. an angle built
+  // purely from running position at the 400m), there's nothing left to check
+  // an upcoming runner against — showing "every fixture" in that case would
+  // be misleading, since none of the angle's conditions were actually
+  // evaluated. Show an explicit empty state instead.
+  if(STATE.filters.length > 0 && preFilters.length === 0){
+    note.textContent = `This angle is based entirely on outcome data (e.g. running position, SP) that isn't known before a race — it can't be checked against upcoming fixtures.`;
+    empty.textContent = 'Add a pre-race condition (class, distance, jockey, trainer, etc.) to see which upcoming runners qualify.';
+    empty.hidden = false;
+    return;
+  }
+
+  note.textContent = outcomeOnlyCount>0
+    ? `${outcomeOnlyCount} outcome-only condition${outcomeOnlyCount>1?'s':''} ignored here — only pre-race conditions transfer to upcoming fields.`
+    : `Showing upcoming runners matching your current conditions.`;
+
+  const matches = STATE.fixtures.filter(r=>!r.scratched && matchesFilters(r, preFilters, {skipOutcome:true}));
+  empty.textContent = 'No upcoming runners match the current conditions.';
   if(matches.length===0){ empty.hidden = false; return; }
   empty.hidden = true;
   matches
