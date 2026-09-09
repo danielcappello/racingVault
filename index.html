@@ -109,6 +109,25 @@ table{ border-collapse:collapse; width:100%; }
 .status-dot.err{ background:var(--danger); }
 .status-dot.warn{ background:#D97706; }
 
+.year-banner{
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  padding:8px 24px; background:#FBFBFC; border-bottom:1px solid var(--border);
+  font-size:11.5px;
+}
+.year-banner-label{ color:var(--text-subtle); flex-shrink:0; }
+.year-chips{ display:flex; flex-wrap:wrap; gap:6px; }
+.year-chip{
+  font-family:var(--font-mono); font-size:11px; padding:2px 8px; border-radius:999px;
+  border:1px solid var(--border); background:#fff; color:var(--text-muted);
+}
+.year-chip-ok{ background:var(--success-soft); border-color:var(--success-soft-border); color:var(--success); }
+.year-chip-warn{ background:#FFFBEB; border-color:#FDE68A; color:#B45309; }
+.year-chip-fail{ background:var(--danger-soft); border-color:var(--danger-soft-border); color:var(--danger); }
+
+@media (max-width:700px){
+  .year-banner{ padding:8px 14px; }
+}
+
 .content{
   flex:1;
   width:100%;
@@ -296,6 +315,11 @@ th.num, td.num{ text-align:right; font-family:var(--font-mono); }
       <span id="statusText">Loading historic form and fixtures…</span>
     </div>
   </header>
+
+  <div class="year-banner" id="yearBanner" hidden>
+    <span class="year-banner-label">Historic races loaded per year</span>
+    <div class="year-chips" id="yearChips"></div>
+  </div>
 
   <main class="content">
 
@@ -1587,25 +1611,65 @@ function setStatus(text, cls){
   document.getElementById('statusDot').className = 'status-dot' + (cls?(' '+cls):'');
 }
 
+/* A persistent, always-visible per-year breakdown of what actually
+   loaded — how many races came from each yearly file, or why one
+   didn't contribute any. This is the primary way to tell, at a glance,
+   whether every year made it in: a run of green chips with sensible
+   counts means everything loaded; any amber ("0 rows" — the file
+   fetched fine but parsed to nothing, e.g. a header-only export) or red
+   ("failed to load" — the fetch/parse itself failed) chip points
+   straight at the file to check. */
+function renderYearBanner(resultsSettled){
+  const container = document.getElementById('yearChips');
+  const banner = document.getElementById('yearBanner');
+  if(!container || !banner) return;
+  container.innerHTML = '';
+  RESULTS_YEARS.forEach((year, i)=>{
+    const r = resultsSettled[i];
+    const count = r.rows.length;
+    const chip = document.createElement('span');
+    if(!r.ok){
+      chip.className = 'year-chip year-chip-fail';
+      chip.textContent = `${year}: failed to load`;
+      chip.title = `${r.filename}${r.error ? ' — ' + r.error : ''}`;
+    } else if(count === 0){
+      chip.className = 'year-chip year-chip-warn';
+      chip.textContent = `${year}: 0 rows`;
+      chip.title = r.filename;
+    } else {
+      chip.className = 'year-chip year-chip-ok';
+      chip.textContent = `${year}: ${count.toLocaleString()}`;
+      chip.title = r.filename;
+    }
+    container.appendChild(chip);
+  });
+  banner.hidden = false;
+}
+
 /* Loads and processes a single year's results file. Failures are caught
    here rather than left to blow up the whole load — a missing or
    renamed year should degrade to "this one year is absent from the
-   analysis", not take down the app. A 404 served over HTTP often
-   resolves rather than rejects (with an HTML error page as the "CSV"),
-   so this also checks the parsed header actually looks like our schema
-   before trusting it. */
+   analysis", not take down the app. Deliberately lenient about what
+   counts as "looks like a real CSV" (just needs a header row and a
+   handful of columns) rather than checking for a specific column name —
+   a stricter check risks false-rejecting a real file over something as
+   small as a capitalization or whitespace difference in its header. */
+function looksLikeValidCsv(raw){
+  return !!raw && raw.length >= 2 && Array.isArray(raw[0]) && raw[0].length >= 5;
+}
 function loadResultsFile(filename){
   return loadCSV(filename)
     .then(raw => {
-      if(!raw || raw.length < 2 || !raw[0].some(h => (h||'').trim() === 'date')){
-        console.error('Unexpected or missing content for', filename);
-        return { filename, rows: [], ok: false };
+      if(!looksLikeValidCsv(raw)){
+        const detail = raw ? `parsed to ${raw.length} row(s), ${raw[0]?raw[0].length:0} column(s) — doesn't look like a real export` : 'no data returned';
+        console.error('Unexpected or empty content for', filename, detail);
+        return { filename, rows: [], ok: false, error: detail };
       }
       return { filename, rows: processResultsRows(raw), ok: true };
     })
     .catch(err => {
       console.error('Failed to load', filename, err);
-      return { filename, rows: [], ok: false };
+      return { filename, rows: [], ok: false, error: (err && err.message) || String(err) };
     });
 }
 
@@ -1617,12 +1681,13 @@ async function init(){
   STATE.results = resultsSettled.flatMap(r => r.rows);
   const failedFiles = resultsSettled.filter(r => !r.ok).map(r => r.filename);
   const loadedFileCount = resultsSettled.length - failedFiles.length;
+  renderYearBanner(resultsSettled);
 
   let fixturesOk = true;
   try{
     const fixturesRaw = await loadCSV(FIXTURES_CSV);
-    if(!fixturesRaw || fixturesRaw.length < 2 || !fixturesRaw[0].some(h => (h||'').trim() === 'date')){
-      throw new Error('Unexpected or missing content for ' + FIXTURES_CSV);
+    if(!looksLikeValidCsv(fixturesRaw)){
+      throw new Error('Unexpected or empty content for ' + FIXTURES_CSV);
     }
     STATE.fixtures = processFixtureRows(fixturesRaw);
   } catch(err){
