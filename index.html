@@ -107,6 +107,7 @@ table{ border-collapse:collapse; width:100%; }
 .status-dot{ width:7px; height:7px; border-radius:50%; background:var(--text-subtle); flex-shrink:0; }
 .status-dot.ok{ background:var(--success); }
 .status-dot.err{ background:var(--danger); }
+.status-dot.warn{ background:#D97706; }
 
 .content{
   flex:1;
@@ -319,7 +320,7 @@ th.num, td.num{ text-align:right; font-family:var(--font-mono); }
       <div class="card">
         <div class="card-head">
           <div>
-            <h2>Scan for profitable angles <span class="source-tag">racing_results.csv · historic</span></h2>
+            <h2>Scan for profitable angles <span class="source-tag">historic results (2018–2026) · historic</span></h2>
             <p class="muted small">Tests values — alone, in pairs, or in triples — across state, track, going, class, day of week, distance, barrier, weight, field size, track rating, jockey, trainer, and each horse's last-start running position at the 400m/800m — and ranks them by return on investment. It never scans this race's own sectional position, since that isn't known before the race is run; you can still add it as a manual condition for historic research, under "This race's result" in the Conditions list.</p>
           </div>
         </div>
@@ -429,7 +430,7 @@ th.num, td.num{ text-align:right; font-family:var(--font-mono); }
       <div class="card">
         <div class="card-head">
           <div>
-            <h2>Backtested results <span class="source-tag">racing_results.csv · historic</span></h2>
+            <h2>Backtested results <span class="source-tag">historic results (2018–2026) · historic</span></h2>
             <p class="muted small" id="historicSummaryLine">—</p>
           </div>
         </div>
@@ -479,11 +480,19 @@ th.num, td.num{ text-align:right; font-family:var(--font-mono); }
 <script>
 /* ============================================================
    Formline — Racing Profitability Analyser
-   Reads racing_results.csv (historic) and racing_fixtures.csv
-   (upcoming) from the same folder as this file.
+   Reads historic results from a set of per-year CSV files
+   (2018_racingresults.csv … 2026_racingresults.csv) and upcoming
+   fixtures from racing_fixtures.csv, all in the same folder as this
+   file.
    ============================================================ */
 
-const RESULTS_CSV = 'racing_results.csv';
+// Historic data is split one file per year. Edit RESULTS_YEARS if the
+// range of files in the repo ever changes (e.g. a new year is added) —
+// everything else (column handling, filtering, scanning) is unaffected,
+// since every file is expected to share the same columns as before and
+// is just concatenated into one combined dataset after loading.
+const RESULTS_YEARS = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026];
+const RESULTS_CSV_FILES = RESULTS_YEARS.map(y => `${y}_racingresults.csv`);
 const FIXTURES_CSV = 'racing_fixtures.csv';
 const DOW = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
@@ -1578,26 +1587,75 @@ function setStatus(text, cls){
   document.getElementById('statusDot').className = 'status-dot' + (cls?(' '+cls):'');
 }
 
+/* Loads and processes a single year's results file. Failures are caught
+   here rather than left to blow up the whole load — a missing or
+   renamed year should degrade to "this one year is absent from the
+   analysis", not take down the app. A 404 served over HTTP often
+   resolves rather than rejects (with an HTML error page as the "CSV"),
+   so this also checks the parsed header actually looks like our schema
+   before trusting it. */
+function loadResultsFile(filename){
+  return loadCSV(filename)
+    .then(raw => {
+      if(!raw || raw.length < 2 || !raw[0].some(h => (h||'').trim() === 'date')){
+        console.error('Unexpected or missing content for', filename);
+        return { filename, rows: [], ok: false };
+      }
+      return { filename, rows: processResultsRows(raw), ok: true };
+    })
+    .catch(err => {
+      console.error('Failed to load', filename, err);
+      return { filename, rows: [], ok: false };
+    });
+}
+
 async function init(){
   renderFieldSelect();
   initEvents();
+
+  const resultsSettled = await Promise.all(RESULTS_CSV_FILES.map(loadResultsFile));
+  STATE.results = resultsSettled.flatMap(r => r.rows);
+  const failedFiles = resultsSettled.filter(r => !r.ok).map(r => r.filename);
+  const loadedFileCount = resultsSettled.length - failedFiles.length;
+
+  let fixturesOk = true;
   try{
-    const [resultsRaw, fixturesRaw] = await Promise.all([loadCSV(RESULTS_CSV), loadCSV(FIXTURES_CSV)]);
-    STATE.results = processResultsRows(resultsRaw);
+    const fixturesRaw = await loadCSV(FIXTURES_CSV);
+    if(!fixturesRaw || fixturesRaw.length < 2 || !fixturesRaw[0].some(h => (h||'').trim() === 'date')){
+      throw new Error('Unexpected or missing content for ' + FIXTURES_CSV);
+    }
     STATE.fixtures = processFixtureRows(fixturesRaw);
-    attachLastStart(STATE.results, STATE.fixtures);
-    const dated = STATE.results.filter(r=>r.date);
-    const minD = dated.length ? new Date(Math.min(...dated.map(r=>r.date))) : null;
-    const maxD = dated.length ? new Date(Math.max(...dated.map(r=>r.date))) : null;
-    setStatus(
-      `${STATE.results.length.toLocaleString()} historic runs (${minD?fmtDate(minD):'—'} – ${maxD?fmtDate(maxD):'—'}) · ${STATE.fixtures.length.toLocaleString()} upcoming runners loaded`,
-      'ok'
-    );
-    renderAll();
   } catch(err){
-    console.error(err);
-    setStatus('Could not load racing_results.csv / racing_fixtures.csv. Serve this folder over HTTP (e.g. GitHub Pages, or "python3 -m http.server") rather than opening index.html directly.', 'err');
+    console.error('Failed to load', FIXTURES_CSV, err);
+    fixturesOk = false;
+    STATE.fixtures = [];
   }
+
+  attachLastStart(STATE.results, STATE.fixtures);
+
+  if(STATE.results.length === 0 && !fixturesOk){
+    setStatus(
+      `Could not load any historic result files or ${FIXTURES_CSV}. Serve this folder over HTTP (e.g. GitHub Pages, or "python3 -m http.server") rather than opening index.html directly, and check the filenames match ${RESULTS_CSV_FILES.join(', ')}.`,
+      'err'
+    );
+    return;
+  }
+
+  const dated = STATE.results.filter(r=>r.date);
+  const minD = dated.length ? new Date(Math.min(...dated.map(r=>r.date))) : null;
+  const maxD = dated.length ? new Date(Math.max(...dated.map(r=>r.date))) : null;
+
+  const parts = [
+    `${STATE.results.length.toLocaleString()} historic runs across ${loadedFileCount}/${RESULTS_CSV_FILES.length} yearly files (${minD?fmtDate(minD):'—'} – ${maxD?fmtDate(maxD):'—'})`,
+    fixturesOk ? `${STATE.fixtures.length.toLocaleString()} upcoming runners loaded` : `${FIXTURES_CSV} failed to load`,
+  ];
+  let statusMsg = parts.join(' · ');
+  const hasWarning = failedFiles.length > 0 || !fixturesOk;
+  if(failedFiles.length){
+    statusMsg += ` — missing or failed: ${failedFiles.join(', ')}`;
+  }
+  setStatus(statusMsg, hasWarning ? 'warn' : 'ok');
+  renderAll();
 }
 
 init();
