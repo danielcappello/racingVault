@@ -327,10 +327,19 @@ th.num, td.num{ text-align:right; font-family:var(--font-mono); }
           <label class="small">Minimum sample
             <input type="number" id="scanMinSample" value="30" min="5" step="5">
           </label>
+          <label class="small">Min SP ($)
+            <input type="number" id="scanMinSp" placeholder="e.g. 2" min="1" step="0.5">
+          </label>
+          <label class="small">Max SP ($)
+            <input type="number" id="scanMaxSp" placeholder="e.g. 15" min="1" step="0.5">
+          </label>
           <label class="small">Rank by
             <select id="scanMetric">
               <option value="winROI">Win ROI</option>
               <option value="placeROI">Place ROI</option>
+              <option value="strikeRate">Win strike rate</option>
+              <option value="placeStrikeRate">Place strike rate</option>
+              <option value="n">Sample size (runs)</option>
             </select>
           </label>
           <label class="small">Combination depth
@@ -342,6 +351,7 @@ th.num, td.num{ text-align:right; font-family:var(--font-mono); }
           </label>
           <button id="runScanBtn" class="btn btn-primary">Run scan</button>
         </div>
+        <p class="muted small" id="scanSpNote" style="margin:-10px 0 14px;" hidden></p>
         <div class="table-wrap">
           <table id="scanTable">
             <thead>
@@ -952,9 +962,12 @@ function runScan(rows, { minSample=30, metric='winROI', depth=2 } = {}){
       winROI, placeROI,
     });
   }
+  // `metric` is just the property name on each result object to rank
+  // by — n, strikeRate, placeStrikeRate, winROI, or placeROI — so any
+  // field shown in the scan table can be used to sort it.
   out.sort((x,y)=>{
-    const mx = metric==='placeROI' ? (x.placeROI??-999) : (x.winROI??-999);
-    const my = metric==='placeROI' ? (y.placeROI??-999) : (y.winROI??-999);
+    const mx = x[metric] ?? -Infinity;
+    const my = y[metric] ?? -Infinity;
     return my-mx;
   });
   return out.slice(0,150);
@@ -1029,7 +1042,46 @@ function removeFilter(id){
   renderAll();
 }
 
+/* The Scan tab's dedicated Min/Max SP inputs are just a quick way to set
+   (or update) an ordinary 'sp' range condition — the same kind you'd get
+   from "+ Add condition" — rather than a separate mechanism. If one
+   already exists (however it was created) this updates it in place
+   instead of creating a duplicate; passing both bounds as null removes
+   it entirely. Because it's a real filter, it shows up as a normal chip
+   in Conditions and stays applied everywhere (board, Results) exactly
+   like any other condition — not just for the scan itself. */
+function setSpRangeFilter(min, max){
+  const existing = STATE.filters.find(f=>f.key==='sp' && f.mode==='range');
+  if(min==null && max==null){
+    if(existing) STATE.filters = STATE.filters.filter(f=>f!==existing);
+    return;
+  }
+  if(existing){ existing.min = min; existing.max = max; }
+  else { STATE.filters.push({ id:filterSeq++, key:'sp', mode:'range', min, max }); }
+}
+
+function syncSpInputs(){
+  const minEl = document.getElementById('scanMinSp');
+  const maxEl = document.getElementById('scanMaxSp');
+  const note = document.getElementById('scanSpNote');
+  if(!minEl || !maxEl) return; // not on a page with the scan controls
+  const existing = STATE.filters.find(f=>f.key==='sp' && f.mode==='range');
+  if(!existing){
+    minEl.value = '';
+    maxEl.value = '';
+    if(note) note.hidden = true;
+    return;
+  }
+  minEl.value = existing.min ?? '';
+  maxEl.value = existing.max ?? '';
+  if(note){
+    note.textContent = `Restricting to this race's SP between ${existing.min!=null?'$'+existing.min:'any'} and ${existing.max!=null?'$'+existing.max:'any'}.`;
+    note.hidden = false;
+  }
+}
+
 function renderFilterList(){
+  syncSpInputs();
   const container = document.getElementById('filterList');
   container.innerHTML = '';
   if(STATE.filters.length===0){
@@ -1502,12 +1554,20 @@ function initEvents(){
     const minSample = parseInt(document.getElementById('scanMinSample').value,10) || 30;
     const metric = document.getElementById('scanMetric').value;
     const depth = parseInt(document.getElementById('scanDepth').value,10);
+
+    const minSpRaw = document.getElementById('scanMinSp').value;
+    const maxSpRaw = document.getElementById('scanMaxSp').value;
+    const minSp = minSpRaw==='' ? null : parseFloat(minSpRaw);
+    const maxSp = maxSpRaw==='' ? null : parseFloat(maxSpRaw);
+    setSpRangeFilter(minSp, maxSp);
+
     const btn = document.getElementById('runScanBtn');
     btn.disabled = true; btn.textContent = 'Scanning…';
     setTimeout(()=>{
       const rows = eligibleResults().filter(r=>r.sp!=null);
       STATE.scan = runScan(rows, { minSample, metric, depth });
       renderScanTable();
+      renderAll(true);
       btn.disabled = false; btn.textContent = 'Run scan';
     }, 30);
   });
