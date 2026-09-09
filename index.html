@@ -320,7 +320,7 @@ th.num, td.num{ text-align:right; font-family:var(--font-mono); }
         <div class="card-head">
           <div>
             <h2>Scan for profitable angles <span class="source-tag">racing_results.csv · historic</span></h2>
-            <p class="muted small">Tests values — alone, in pairs, or in triples — across state, track, going, class, day of week, distance, barrier, weight, field size, track rating, jockey, trainer, and each horse's last-start form (finishing position, margin, SP, place price, and running position at the 400m/800m) — and ranks them by return on investment. This race's own result (its own SP, finish, sectional positions) is also available as a condition for historic research, separate from last-start form.</p>
+            <p class="muted small">Tests values — alone, in pairs, or in triples — across state, track, going, class, day of week, distance, barrier, weight, field size, track rating, jockey, trainer, and each horse's last-start running position at the 400m/800m — and ranks them by return on investment. It never scans this race's own sectional position, since that isn't known before the race is run; you can still add it as a manual condition for historic research, under "This race's result" in the Conditions list.</p>
           </div>
         </div>
         <div class="scan-controls">
@@ -517,7 +517,7 @@ const FIELDS = [
   { key:'position800',    label:'Position at 800m',       mode:'numeric', both:false, thisRaceResult:true },
 ];
 const FIELD_MAP = Object.fromEntries(FIELDS.map(f=>[f.key,f]));
-const BUCKET_KEYS = ['distance','barrier','weight','fieldsize','trackrating','prev_position400','prev_position800','position400','position800'];
+const BUCKET_KEYS = ['distance','barrier','weight','fieldsize','trackrating','prev_position400','prev_position800'];
 
 /* Scan dimensions are split into two groups for performance reasons:
    - LOW_CARD: a handful of values each (state, going, class, sectional
@@ -529,8 +529,21 @@ const BUCKET_KEYS = ['distance','barrier','weight','fieldsize','trackrating','pr
      jockey+trainer+<one LOW_CARD dimension>. That keeps a "jockey/trainer
      combo at this class/distance/track condition" angle within reach
      without the combinatorial blow-up of crossing every named entity with
-     every other one. */
-const LOW_CARD_DIMS = ['state','trackcondition','raceclass','dow','distance','barrier','weight','fieldsize','trackrating','prev_position400','prev_position800','position400','position800'];
+     every other one.
+
+   Deliberately excluded from scanning: position400 / position800 (this
+   race's OWN sectional positions). A scanned angle is meant to be a
+   system you could have applied before the race — but a horse's own
+   sectional position in the very race being scored isn't known until
+   that race is under way, so it can never legitimately drive a
+   prospective angle. Their last-start equivalents, prev_position400 /
+   prev_position800, are exactly that same signal but already known in
+   advance, so those are what the scanner searches. The current-race
+   versions still exist as manual filters, under "This race's result",
+   for historic research (e.g. "how did favourites who led throughout
+   actually perform") — just not as something the automated scanner can
+   discover as a bettable angle. */
+const LOW_CARD_DIMS = ['state','trackcondition','raceclass','dow','distance','barrier','weight','fieldsize','trackrating','prev_position400','prev_position800'];
 const NAMED_DIMS = ['track','jockey','trainer'];
 const SINGLE_SCAN_DIMS = [...LOW_CARD_DIMS, ...NAMED_DIMS];
 
@@ -620,8 +633,6 @@ function bucketOf(key, val){
       return 'Rating 8–10 (heavy)';
     case 'prev_position400':
     case 'prev_position800':
-    case 'position400':
-    case 'position800':
       if(val<=2) return 'Led (1st–2nd)';
       if(val<=5) return 'Handy (3rd–5th)';
       if(val<=9) return 'Midfield (6th–9th)';
