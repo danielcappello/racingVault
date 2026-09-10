@@ -1412,6 +1412,17 @@ function activateTab(tab){
   document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active', p.id==='panel-'+tab));
 }
 function setActiveTab(tab){
+  // Returning to Scan always starts from a clean baseline (aside from
+  // the deliberate Min/Max SP scope, which persists on purpose). Without
+  // this, whatever angle was last viewed in Results would stay silently
+  // applied — there's no Conditions list on the Scan tab to show it's
+  // still active — and the next "Run scan" would quietly search within
+  // that narrowed set instead of everything, looking like a bug (a
+  // shorter results list with no visible cause).
+  if(tab==='scan'){
+    const spFilter = STATE.filters.find(f=>f.key==='sp' && f.mode==='range');
+    STATE.filters = spFilter ? [spFilter] : [];
+  }
   activateTab(tab);
   renderAll();
 }
