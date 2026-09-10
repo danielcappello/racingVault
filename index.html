@@ -1232,7 +1232,14 @@ function renderChart(rows){
   const W=1000,H=260, padL=54, padR=16, padT=16, padB=26;
   const xs = series.map((_,i)=>i);
   const ys = series.map(p=>p.cum);
-  const minY = Math.min(0, ...ys), maxY = Math.max(0, ...ys);
+  // Same stack-overflow risk as above if spread — a broad, unfiltered
+  // view across several years of results can easily produce a series
+  // with hundreds of thousands of points.
+  let minY = 0, maxY = 0;
+  for(const v of ys){
+    if(v < minY) minY = v;
+    if(v > maxY) maxY = v;
+  }
   const spanY = (maxY-minY) || 1;
   const x = i => padL + (i/(xs.length-1)) * (W-padL-padR);
   const y = v => H-padB - ((v-minY)/spanY) * (H-padT-padB);
@@ -1751,9 +1758,16 @@ async function loadEverything(){
     return;
   }
 
+  // Spreading a large array into Math.min/Math.max (e.g. Math.min(...arr))
+  // blows the call stack once the array gets big enough — comfortably
+  // within range for several years of combined historic results. A plain
+  // loop has no such limit regardless of row count.
   const dated = STATE.results.filter(r=>r.date);
-  const minD = dated.length ? new Date(Math.min(...dated.map(r=>r.date))) : null;
-  const maxD = dated.length ? new Date(Math.max(...dated.map(r=>r.date))) : null;
+  let minD = null, maxD = null;
+  for(const r of dated){
+    if(minD===null || r.date < minD) minD = r.date;
+    if(maxD===null || r.date > maxD) maxD = r.date;
+  }
 
   const parts = [
     `${STATE.results.length.toLocaleString()} historic runs across ${loadedFileCount}/${RESULTS_CSV_FILES.length} yearly files (${minD?fmtDate(minD):'—'} – ${maxD?fmtDate(maxD):'—'})`,
