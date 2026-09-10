@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Formline — Racing Profitability Analyser</title>
+<title>Racing Vault — Racing Profitability Analyser</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -240,22 +240,39 @@ table{ border-collapse:collapse; width:100%; }
 .scan-controls label{ display:flex; flex-direction:column; gap:4px; font-weight:500; color:var(--text-muted); font-size:12px; }
 
 /* ---------------- tables ---------------- */
-.table-wrap{ overflow-x:auto; border:1px solid var(--border); border-radius:var(--radius-md); }
+/* table-layout:fixed means columns share the container's width evenly
+   (or per any explicit widths) rather than growing to fit their
+   content — combined with wrapping below, a table can never force the
+   page wider than its card, so there's nothing to scroll sideways for,
+   no matter how long a horse or trainer name gets. */
+.table-wrap{ border:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden; }
+table{ table-layout:fixed; width:100%; }
 table thead th{
   text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.04em;
   color:var(--text-muted); font-weight:600; padding:10px 14px;
-  border-bottom:1px solid var(--border); background:#FAFAFB; white-space:nowrap;
+  border-bottom:1px solid var(--border); background:#FAFAFB;
+  white-space:normal; word-break:break-word; overflow-wrap:break-word;
 }
-table tbody td{ padding:10px 14px; border-bottom:1px solid var(--border); font-size:13px; white-space:nowrap; }
+table tbody td{
+  padding:10px 14px; border-bottom:1px solid var(--border); font-size:13px;
+  white-space:normal; word-break:break-word; overflow-wrap:break-word;
+}
 table tbody tr:last-child td{ border-bottom:none; }
 table tbody tr:hover{ background:#FAFAFB; }
 th.num, td.num{ text-align:right; font-family:var(--font-mono); }
 .profit-pos{ color:var(--success); font-family:var(--font-mono); font-weight:600; }
 .profit-neg{ color:var(--danger); font-family:var(--font-mono); }
 
-.mini-table{ width:100%; border-collapse:collapse; }
-.mini-table th{ font-size:10px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; white-space:nowrap; background:#FAFAFB; }
-.mini-table td{ font-size:12.5px; padding:8px 10px; border-bottom:1px solid var(--border); white-space:nowrap; }
+.mini-table{ table-layout:fixed; width:100%; border-collapse:collapse; }
+.mini-table th{
+  font-size:10px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted);
+  padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; background:#FAFAFB;
+  white-space:normal; word-break:break-word; overflow-wrap:break-word;
+}
+.mini-table td{
+  font-size:12.5px; padding:8px 10px; border-bottom:1px solid var(--border);
+  white-space:normal; word-break:break-word; overflow-wrap:break-word;
+}
 .mini-table th.num, .mini-table td.num{ text-align:right; font-family:var(--font-mono); }
 .mini-table tbody tr:last-child td{ border-bottom:none; }
 
@@ -289,8 +306,8 @@ th.num, td.num{ text-align:right; font-family:var(--font-mono); }
   <header class="navbar">
     <div class="navbar-left">
       <div class="brand">
-        <span class="brand-mark">F</span>
-        <span class="brand-name">Formline</span>
+        <span class="brand-mark" id="brandMark">RV</span>
+        <span class="brand-name">Racing Vault</span>
       </div>
       <nav class="tabswitch" id="tabs">
         <button class="tab active" data-tab="scan">Scan for angles</button>
@@ -493,7 +510,7 @@ th.num, td.num{ text-align:right; font-family:var(--font-mono); }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
 /* ============================================================
-   Formline — Racing Profitability Analyser
+   Racing Vault — Racing Profitability Analyser
    Reads historic results from a set of per-year CSV files
    (2018_racingresults.csv … 2026_racingresults.csv) and upcoming
    fixtures from racing_fixtures.csv, all in the same folder as this
@@ -685,8 +702,25 @@ function getCol(row, colIndex, name, occurrence=0){
   return row[i] !== undefined ? row[i] : '';
 }
 
+/* A request that never resolves or rejects — a stalled connection, a
+   proxy that swallows it silently, anything short of an outright
+   network error — would otherwise block Promise.all forever and leave
+   the status bar stuck on "Loading…" indefinitely, with nothing to show
+   for it. This guarantees every file load settles one way or another
+   within a bounded time. */
+const FILE_LOAD_TIMEOUT_MS = 20000;
+function withTimeout(promise, ms, label){
+  return new Promise((resolve, reject)=>{
+    const timer = setTimeout(()=>reject(new Error(`Timed out after ${Math.round(ms/1000)}s loading ${label}`)), ms);
+    promise.then(
+      val => { clearTimeout(timer); resolve(val); },
+      err => { clearTimeout(timer); reject(err); }
+    );
+  });
+}
+
 function loadCSV(path){
-  return new Promise((resolve,reject)=>{
+  const request = new Promise((resolve,reject)=>{
     Papa.parse(path, {
       download:true,
       skipEmptyLines:true,
@@ -694,6 +728,7 @@ function loadCSV(path){
       error: err => reject(err),
     });
   });
+  return withTimeout(request, FILE_LOAD_TIMEOUT_MS, path);
 }
 
 function processResultsRows(rows){
@@ -1671,6 +1706,22 @@ async function init(){
   initEvents();
   renderScanFieldToggles();
 
+  // Wraps the entire load in a catch-all: if anything here throws for a
+  // reason we haven't anticipated (an edge case in real-world data, a
+  // browser quirk, whatever), the status bar still gets a final answer
+  // instead of sitting on "Loading…" forever with no explanation.
+  try{
+    await loadEverything();
+  } catch(err){
+    console.error('Unexpected error while loading', err);
+    setStatus(
+      `Something went wrong while loading the data (${err && err.message ? err.message : err}). Check the browser console for details, or try reloading the page.`,
+      'err'
+    );
+  }
+}
+
+async function loadEverything(){
   const resultsSettled = await Promise.all(RESULTS_CSV_FILES.map(loadResultsFile));
   STATE.results = resultsSettled.flatMap(r => r.rows);
   const failedFiles = resultsSettled.filter(r => !r.ok).map(r => r.filename);
