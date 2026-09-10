@@ -317,7 +317,7 @@ th.num, td.num{ text-align:right; font-family:var(--font-mono); }
         <div class="card-head">
           <div>
             <h2>Scan for profitable angles <span class="source-tag">historic results (2018–2026) · historic</span></h2>
-            <p class="muted small">Tests values — alone, in pairs, or in triples — across whichever fields are toggled on below, and ranks them by return on investment. It never scans this race's own sectional position, since that isn't known before the race is run — only its last-start equivalent.</p>
+            <p class="muted small">Tests values — alone or combined up to 7 at once — across whichever fields are toggled on below, and ranks them by return on investment. Each depth builds on the last (choosing "Triples" also surfaces the best single- and pair-factor angles, not just three-factor ones), and it never scans this race's own sectional position, since that isn't known before the race is run — only its last-start equivalent.</p>
           </div>
           <button id="resetScanBtn" class="btn-text">Reset</button>
         </div>
@@ -356,12 +356,17 @@ th.num, td.num{ text-align:right; font-family:var(--font-mono); }
             <select id="scanDepth">
               <option value="1">Single factor</option>
               <option value="2" selected>Pairs of factors</option>
-              <option value="3">Triples (jockey + trainer + one more — slower)</option>
+              <option value="3">Triples</option>
+              <option value="4">4 factors — slower</option>
+              <option value="5">5 factors — slower</option>
+              <option value="6">6 factors — much slower</option>
+              <option value="7">7 factors — much slower</option>
             </select>
           </label>
           <button id="runScanBtn" class="btn btn-primary">Run scan</button>
         </div>
-        <p class="muted small" id="scanSpNote" style="margin:-10px 0 14px;" hidden></p>
+        <p class="muted small" id="scanComplexityNote" style="margin:-10px 0 6px;"></p>
+        <p class="muted small" id="scanSpNote" style="margin:0 0 14px;" hidden></p>
         <div class="table-wrap">
           <table id="scanTable">
             <thead>
@@ -884,108 +889,182 @@ function buildCumulativeSeries(rows){
   });
 }
 
-/* ---------------- scan engine ----------------
-   Scans historic RESULTS only (STATE.results, via the rows passed in —
-   never fixtures). This is deliberate: an angle's win/place ROI is a
-   read of how it has performed in COMPLETED historic races, and must
-   never be computed against, or contaminated by, rows from the upcoming
-   fixtures file. See comboToMatches() below for how a found angle is
-   then matched separately against past races and against upcoming
-   fixtures.
-------------------------------------------------- */
+/* ---------------- scan engine (Apriori-pruned) ----------------
+   Combining several independent low-cardinality fields still produces
+   an explosively large number of distinct VALUE combinations even
+   though each field alone has only a few values — five 5-value fields
+   already give over 3,000 possible tuples. Generating and aggregating
+   every one of those from scratch at every depth, for every row, is
+   both slow and memory-hungry enough to crash a browser tab at depth
+   5+.
+
+   Instead this builds combinations level-by-level (1 factor, then 2,
+   then 3, ...), and — critically — only ever extends a combination that
+   already has at least `minSample` matching rows. Since adding another
+   condition can only keep a group the same size or shrink it (never
+   grow it), a group that's already below the sample threshold can be
+   discarded outright: nothing built on top of it could ever reach the
+   threshold either. In practice the vast majority of the search space
+   is pruned away after the first two or three levels, which is what
+   makes depths up to 7 tractable at all. Track is deliberately excluded
+   from this extension process — it's always single-dimension only, to
+   keep venue-specific noise from crowding out more informative angles
+   as depth increases. */
 function scanValueFor(row, dim){
   if(BUCKET_KEYS.includes(dim)) return bucketOf(dim, row[dim]);
   return row[dim];
 }
 
-function runScan(rows, { minSample=30, metric='winROI', depth=2 } = {}){
-  // Only dimensions currently toggled on (STATE.scanFields) participate —
-  // everything below is computed fresh per call rather than once at
-  // load time, since the active set can change between scans.
+/* A rough, purely-combinatorial upper bound on how many distinct
+   combinations COULD be generated per race, ignoring pruning — pruning
+   only ever reduces this in practice, so it's a safe "worst case" figure
+   to show upfront, before any data is touched. */
+function estimateCombosPerRow(depth){
+  function C(n,k){
+    if(k<0||k>n) return 0;
+    k = Math.min(k, n-k);
+    let r = 1;
+    for(let i=0;i<k;i++) r = r*(n-i)/(i+1);
+    return Math.round(r);
+  }
+  const nLow = LOW_CARD_DIMS.filter(d=>STATE.scanFields.has(d)).length;
+  const includeTrack = STATE.scanFields.has('track');
+  const includeJockey = STATE.scanFields.has('jockey');
+  const includeTrainer = STATE.scanFields.has('trainer');
+  const nMaster = nLow + (includeJockey?1:0) + (includeTrainer?1:0);
+  let total = includeTrack ? 1 : 0;
+  for(let s=1; s<=depth; s++) total += C(nMaster, s);
+  return total;
+}
+
+/* Scanning runs level-by-level with a yield back to the browser between
+   each one (via setTimeout), so the tab never looks hung even when a
+   deep, wide search takes a while. Returns a Promise resolving to the
+   same ranked, capped array the UI already expects. onProgress(level,
+   totalLevels) is called after each level finishes. */
+function runScanAsync(rows, { minSample=30, metric='winROI', depth=2 } = {}, onProgress){
   const activeLow = LOW_CARD_DIMS.filter(d=>STATE.scanFields.has(d));
   const includeTrack = STATE.scanFields.has('track');
   const includeJockey = STATE.scanFields.has('jockey');
   const includeTrainer = STATE.scanFields.has('trainer');
-  const lowPairIdx = [];
-  for(let i=0;i<activeLow.length;i++) for(let j=i+1;j<activeLow.length;j++) lowPairIdx.push([i,j]);
 
-  const aggs = new Map();
-  function addAgg(key, row){
-    let a = aggs.get(key);
-    if(!a){ a = { n:0, wins:0, placed:0, winProfit:0, placeProfit:0, spN:0, placeN:0 }; aggs.set(key,a); }
-    a.n++;
-    if(row.sp!=null){
-      a.spN++;
-      if(row.finish===1){ a.wins++; a.winProfit += (row.sp-1); } else { a.winProfit -= 1; }
-    }
-    if(row.placeodds!=null){
-      a.placeN++;
-      if(row.finish!=null && row.finish<=3){ a.placed++; a.placeProfit += (row.placeodds-1); } else { a.placeProfit -= 1; }
-    }
-  }
+  const masterDims = activeLow.slice();
+  if(includeJockey) masterDims.push('jockey');
+  if(includeTrainer) masterDims.push('trainer');
 
-  for(const row of rows){
-    const lowVals = activeLow.map(d=>scanValueFor(row,d));
-    const jockey = includeJockey ? row.jockey : null;
-    const trainer = includeTrainer ? row.trainer : null;
-    const track = includeTrack ? row.track : null;
-
-    // single-factor angles
-    for(let i=0;i<activeLow.length;i++){
-      if(lowVals[i]==null || lowVals[i]==='') continue;
-      addAgg(JSON.stringify([[activeLow[i],lowVals[i]]]), row);
-    }
-    if(track) addAgg(JSON.stringify([['track',track]]), row);
-    if(jockey) addAgg(JSON.stringify([['jockey',jockey]]), row);
-    if(trainer) addAgg(JSON.stringify([['trainer',trainer]]), row);
-
-    if(depth>=2){
-      // every pair among the active low-cardinality dimensions
-      for(const [i,j] of lowPairIdx){
-        if(lowVals[i]==null||lowVals[i]===''||lowVals[j]==null||lowVals[j]==='') continue;
-        addAgg(JSON.stringify([[activeLow[i],lowVals[i]],[activeLow[j],lowVals[j]]]), row);
-      }
-      // the jockey/trainer combo itself
-      if(jockey && trainer) addAgg(JSON.stringify([['jockey',jockey],['trainer',trainer]]), row);
-      // jockey or trainer crossed with each active low-card dimension
-      for(let i=0;i<activeLow.length;i++){
-        if(lowVals[i]==null || lowVals[i]==='') continue;
-        if(jockey) addAgg(JSON.stringify([['jockey',jockey],[activeLow[i],lowVals[i]]]), row);
-        if(trainer) addAgg(JSON.stringify([['trainer',trainer],[activeLow[i],lowVals[i]]]), row);
-      }
-    }
-
-    if(depth>=3 && jockey && trainer){
-      // jockey+trainer combo, further narrowed by one active low-card dimension
-      for(let i=0;i<activeLow.length;i++){
-        if(lowVals[i]==null || lowVals[i]==='') continue;
-        addAgg(JSON.stringify([['jockey',jockey],['trainer',trainer],[activeLow[i],lowVals[i]]]), row);
-      }
-    }
-  }
-
-  const out = [];
-  for(const [key,a] of aggs){
-    if(a.n < minSample) continue;
-    const winROI = a.spN? a.winProfit/a.spN*100 : null;
-    const placeROI = a.placeN? a.placeProfit/a.placeN*100 : null;
-    out.push({
-      combo: JSON.parse(key),
-      n:a.n, wins:a.wins, placed:a.placed,
-      strikeRate: a.n? a.wins/a.n*100 : 0,
-      placeStrikeRate: a.n? a.placed/a.n*100 : 0,
-      winROI, placeROI,
-    });
-  }
-  // `metric` is just the property name on each result object to rank
-  // by — n, strikeRate, placeStrikeRate, winROI, or placeROI — so any
-  // field shown in the scan table can be used to sort it.
-  out.sort((x,y)=>{
-    const mx = x[metric] ?? -Infinity;
-    const my = y[metric] ?? -Infinity;
-    return my-mx;
+  const n = rows.length;
+  const dimVals = masterDims.map(d=>{
+    const arr = new Array(n);
+    for(let ri=0; ri<n; ri++) arr[ri] = scanValueFor(rows[ri], d);
+    return arr;
   });
-  return out.slice(0,150);
+
+  function statsFor(indices){
+    let wins=0, placed=0, winProfit=0, placeProfit=0, spN=0, placeN=0;
+    for(let x=0; x<indices.length; x++){
+      const row = rows[indices[x]];
+      if(row.sp!=null){
+        spN++;
+        if(row.finish===1){ wins++; winProfit += (row.sp-1); } else { winProfit -= 1; }
+      }
+      if(row.placeodds!=null){
+        placeN++;
+        if(row.finish!=null && row.finish<=3){ placed++; placeProfit += (row.placeodds-1); } else { placeProfit -= 1; }
+      }
+    }
+    return { n:indices.length, wins, placed, winROI: spN? winProfit/spN*100 : null, placeROI: placeN? placeProfit/placeN*100 : null };
+  }
+  function toResult(pairs, indices){
+    const st = statsFor(indices);
+    return {
+      combo: pairs, n: st.n, wins: st.wins, placed: st.placed,
+      strikeRate: st.n? st.wins/st.n*100 : 0,
+      placeStrikeRate: st.n? st.placed/st.n*100 : 0,
+      winROI: st.winROI, placeROI: st.placeROI,
+    };
+  }
+  function groupBy(indices, dimIdx){
+    const groups = new Map();
+    for(let x=0; x<indices.length; x++){
+      const ri = indices[x];
+      const v = dimVals[dimIdx][ri];
+      if(v==null || v==='') continue;
+      let g = groups.get(v);
+      if(!g){ g=[]; groups.set(v,g); }
+      g.push(ri);
+    }
+    return groups;
+  }
+
+  const results = [];
+
+  if(includeTrack){
+    const groups = new Map();
+    for(let ri=0; ri<n; ri++){
+      const v = rows[ri].track;
+      if(!v) continue;
+      let g = groups.get(v);
+      if(!g){ g=[]; groups.set(v,g); }
+      g.push(ri);
+    }
+    for(const [v, idxs] of groups){
+      if(idxs.length < minSample) continue;
+      results.push(toResult([['track', v]], idxs));
+    }
+  }
+
+  const allIndices = [];
+  for(let ri=0; ri<n; ri++) allIndices.push(ri);
+
+  let currentLevel = [];
+  for(let di=0; di<masterDims.length; di++){
+    const groups = groupBy(allIndices, di);
+    for(const [v, idxs] of groups){
+      if(idxs.length < minSample) continue;
+      const pairs = [[masterDims[di], v]];
+      results.push(toResult(pairs, idxs));
+      currentLevel.push({ maxDim: di, pairs, indices: idxs });
+    }
+  }
+
+  return new Promise(resolve=>{
+    let level = 1;
+    function finish(){
+      results.sort((x,y)=>{
+        const mx = x[metric] ?? -Infinity;
+        const my = y[metric] ?? -Infinity;
+        return my-mx;
+      });
+      resolve(results.slice(0,150));
+    }
+    function nextLevel(){
+      if(level>=depth || currentLevel.length===0){ finish(); return; }
+      level++;
+      const nextItems = [];
+      let ci = 0;
+      function stepParents(){
+        const batchEnd = Math.min(ci+40, currentLevel.length);
+        for(; ci<batchEnd; ci++){
+          const parent = currentLevel[ci];
+          for(let di=parent.maxDim+1; di<masterDims.length; di++){
+            const groups = groupBy(parent.indices, di);
+            for(const [v, idxs] of groups){
+              if(idxs.length < minSample) continue;
+              const pairs = parent.pairs.concat([[masterDims[di], v]]);
+              results.push(toResult(pairs, idxs));
+              nextItems.push({ maxDim: di, pairs, indices: idxs });
+            }
+          }
+        }
+        if(onProgress) onProgress(level-1, depth);
+        if(ci < currentLevel.length) setTimeout(stepParents, 0);
+        else { currentLevel = nextItems; setTimeout(nextLevel, 0); }
+      }
+      stepParents();
+    }
+    if(onProgress) onProgress(1, depth);
+    setTimeout(nextLevel, 0);
+  });
 }
 
 /* ---------------- angle -> filters -----------------
@@ -1064,9 +1143,33 @@ function renderScanFieldToggles(){
       if(STATE.scanFields.has(key)) STATE.scanFields.delete(key);
       else STATE.scanFields.add(key);
       renderScanFieldToggles();
+      renderScanComplexity();
     };
     container.appendChild(btn);
   });
+}
+
+/* A live, pre-flight estimate of how heavy the current field selection
+   and depth are — pure combinatorics, no data touched, so it's cheap to
+   recompute on every toggle/depth change. This is what lets someone see
+   "that's a lot" before committing to a scan, rather than finding out
+   partway through a multi-minute run. */
+function renderScanComplexity(){
+  const el = document.getElementById('scanComplexityNote');
+  const depthEl = document.getElementById('scanDepth');
+  if(!el || !depthEl) return;
+  const depth = parseInt(depthEl.value, 10) || 2;
+  const perRow = estimateCombosPerRow(depth);
+  const rowCount = eligibleResults().filter(r=>r.sp!=null).length;
+  const total = perRow * rowCount;
+
+  let pace;
+  if(total > 150_000_000) pace = 'likely several minutes — narrowing fields or lowering depth will speed this up a lot';
+  else if(total > 25_000_000) pace = 'likely 30 seconds or more';
+  else if(total > 4_000_000) pace = 'likely a few seconds';
+  else pace = 'should be quick';
+
+  el.textContent = `~${perRow.toLocaleString()} combinations checked per race, across ${rowCount.toLocaleString()} priced runs — ${pace}.`;
 }
 
 function renderBoard(rows, summary){
@@ -1400,6 +1503,7 @@ function renderAll(){
   renderBoard(rows, summary);
   syncSpInputs();
   renderScanFieldToggles();
+  renderScanComplexity();
   if(STATE.activeTab==='results'){
     renderResultsPanel(rows);
   }
@@ -1434,10 +1538,12 @@ function initEvents(){
   document.getElementById('selectAllFields').addEventListener('click', ()=>{
     STATE.scanFields = new Set(ALL_SCAN_FIELDS);
     renderScanFieldToggles();
+    renderScanComplexity();
   });
   document.getElementById('deselectAllFields').addEventListener('click', ()=>{
     STATE.scanFields = new Set();
     renderScanFieldToggles();
+    renderScanComplexity();
   });
   document.getElementById('resetScanBtn').addEventListener('click', ()=>{
     STATE.filters = [];
@@ -1448,6 +1554,8 @@ function initEvents(){
     renderAll();
   });
 
+  document.getElementById('scanDepth').addEventListener('change', renderScanComplexity);
+
   document.getElementById('sortField').addEventListener('change', e=>{ STATE.sortField = e.target.value; STATE.page=1; renderAll(); });
   document.getElementById('sortDir').addEventListener('click', e=>{
     STATE.sortDir = STATE.sortDir==='asc' ? 'desc' : 'asc';
@@ -1455,10 +1563,24 @@ function initEvents(){
     renderAll();
   });
 
-  document.getElementById('runScanBtn').addEventListener('click', ()=>{
-    const minSample = parseInt(document.getElementById('scanMinSample').value,10) || 30;
+  document.getElementById('runScanBtn').addEventListener('click', async ()=>{
+    let minSample = parseInt(document.getElementById('scanMinSample').value,10) || 30;
     const metric = document.getElementById('scanMetric').value;
     const depth = parseInt(document.getElementById('scanDepth').value,10);
+
+    // At deep combination sizes, the pruning this scan relies on to stay
+    // fast only works when the sample threshold is actually meaningful —
+    // a very low one prunes almost nothing, and the search reverts
+    // toward brute-force at exactly the depth where that's most
+    // expensive. This floor keeps a deep scan from being driven into
+    // that pathological case by accident; it's raised only as far as
+    // needed for the chosen depth; it does not touch the field toggles,
+    // which are still the main way to make a deep scan faster.
+    const floors = {5:15, 6:20, 7:25};
+    if(floors[depth] && minSample < floors[depth]){
+      minSample = floors[depth];
+      document.getElementById('scanMinSample').value = minSample;
+    }
 
     const minSpRaw = document.getElementById('scanMinSp').value;
     const maxSpRaw = document.getElementById('scanMaxSp').value;
@@ -1468,13 +1590,13 @@ function initEvents(){
 
     const btn = document.getElementById('runScanBtn');
     btn.disabled = true; btn.textContent = 'Scanning…';
-    setTimeout(()=>{
-      const rows = eligibleResults().filter(r=>r.sp!=null);
-      STATE.scan = runScan(rows, { minSample, metric, depth });
-      renderScanTable();
-      renderAll();
-      btn.disabled = false; btn.textContent = 'Run scan';
-    }, 30);
+    const rows = eligibleResults().filter(r=>r.sp!=null);
+    STATE.scan = await runScanAsync(rows, { minSample, metric, depth }, (done, total)=>{
+      btn.textContent = total ? `Scanning… ${Math.round(done/total*100)}%` : 'Scanning…';
+    });
+    renderScanTable();
+    renderAll();
+    btn.disabled = false; btn.textContent = 'Run scan';
   });
 }
 
