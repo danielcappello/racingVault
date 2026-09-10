@@ -175,26 +175,7 @@ table{ border-collapse:collapse; width:100%; }
 }
 .apply-btn:hover{ background:var(--primary-hover); }
 
-/* ---------------- conditions / filter bar ---------------- */
-.filter-bar{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
-.filter-card{
-  background:#FAFAFB;
-  border:1px solid var(--border);
-  border-radius:var(--radius-md);
-  padding:10px 12px;
-  min-width:220px;
-  max-width:280px;
-}
-.filter-card-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; }
-.filter-card-title{ font-size:12.5px; font-weight:600; color:var(--text); }
-.filter-remove{ background:none; border:none; color:var(--text-subtle); font-size:16px; line-height:1; padding:0 2px; }
-.filter-remove:hover{ color:var(--danger); }
-.filter-card-body{ display:flex; flex-direction:column; gap:6px; }
-.filter-card-body input, .filter-card-body select{ width:100%; font-size:12.5px; padding:6px 8px; }
-.range-row{ display:flex; gap:6px; align-items:center; }
-.range-row input{ width:0; flex:1; }
-.range-row span{ color:var(--text-subtle); font-size:11px; }
-
+/* ---------------- chips (used by the applied-angle summary) ---------------- */
 .chip-row{ display:flex; flex-wrap:wrap; gap:6px; margin-top:2px; }
 .chip{
   background:var(--primary-soft);
@@ -206,19 +187,6 @@ table{ border-collapse:collapse; width:100%; }
 }
 .chip button{ background:none; border:none; color:var(--primary); opacity:0.6; font-size:13px; padding:0; line-height:1; }
 .chip button:hover{ opacity:1; }
-.ms-search{ width:100%; margin-bottom:4px; }
-.ms-list{
-  max-height:130px; overflow-y:auto;
-  border:1px solid var(--border);
-  border-radius:var(--radius-sm);
-  background:#fff;
-}
-.ms-option{ display:flex; align-items:center; gap:6px; padding:5px 8px; font-size:12px; color:var(--text); }
-.ms-option:hover{ background:#F3F4F6; }
-.ms-option input{ margin:0; }
-
-.add-filter-row{ display:flex; gap:8px; align-items:center; }
-.add-filter-row select{ min-width:220px; font-size:13px; }
 
 /* conditions summary card (Results tab) */
 .conditions-summary-card{ padding:16px 22px; }
@@ -226,6 +194,25 @@ table{ border-collapse:collapse; width:100%; }
 .conditions-summary-head h3{ font-size:13px; }
 .conditions-summary-card .chip{ background:#F3F4F6; border-color:var(--border); color:var(--text); }
 .conditions-summary-card .chip button{ display:none; }
+
+/* ---------------- scan field toggles ---------------- */
+.field-toggle-section{ margin-bottom:18px; padding-bottom:18px; border-bottom:1px solid var(--border); }
+.field-toggle-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px; }
+.field-toggle-head h3{ font-size:13px; }
+.field-toggle-actions{ display:flex; gap:14px; }
+.field-toggle-grid{ display:flex; flex-wrap:wrap; gap:8px; }
+.field-toggle{
+  padding:7px 14px;
+  border-radius:999px;
+  border:1px solid var(--border-strong);
+  background:#fff;
+  color:var(--text-muted);
+  font-size:12.5px;
+  font-weight:500;
+}
+.field-toggle:hover{ border-color:var(--primary); color:var(--primary); }
+.field-toggle.active{ background:var(--primary); border-color:var(--primary); color:#fff; }
+.field-toggle.active:hover{ background:var(--primary-hover); border-color:var(--primary-hover); color:#fff; }
 
 /* ---------------- tote board ---------------- */
 .board{
@@ -329,25 +316,23 @@ th.num, td.num{ text-align:right; font-family:var(--font-mono); }
       <div class="card">
         <div class="card-head">
           <div>
-            <h2>Conditions</h2>
-            <p class="muted small">Optional — narrow the historic data before you scan. Any angle you view later stacks on top of these.</p>
-          </div>
-          <button id="clearFilters" class="btn-text">Clear all</button>
-        </div>
-        <div id="filterList" class="filter-bar"></div>
-        <div class="add-filter-row">
-          <select id="newFieldSelect"></select>
-          <button id="addFilterBtn" class="btn btn-secondary btn-small">+ Add condition</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-head">
-          <div>
             <h2>Scan for profitable angles <span class="source-tag">historic results (2018–2026) · historic</span></h2>
-            <p class="muted small">Tests values — alone, in pairs, or in triples — across state, track, going, class, day of week, distance, barrier, weight, field size, track rating, jockey, trainer, and each horse's last-start running position at the 400m/800m — and ranks them by return on investment. It never scans this race's own sectional position, since that isn't known before the race is run; you can still add it as a manual condition for historic research, under "This race's result" in the Conditions list.</p>
+            <p class="muted small">Tests values — alone, in pairs, or in triples — across whichever fields are toggled on below, and ranks them by return on investment. It never scans this race's own sectional position, since that isn't known before the race is run — only its last-start equivalent.</p>
           </div>
+          <button id="resetScanBtn" class="btn-text">Reset</button>
         </div>
+
+        <div class="field-toggle-section">
+          <div class="field-toggle-head">
+            <h3>Fields to include in combinations</h3>
+            <div class="field-toggle-actions">
+              <button id="selectAllFields" class="btn-text">Select all</button>
+              <button id="deselectAllFields" class="btn-text">Deselect all</button>
+            </div>
+          </div>
+          <div class="field-toggle-grid" id="scanFieldToggles"></div>
+        </div>
+
         <div class="scan-controls">
           <label class="small">Minimum sample
             <input type="number" id="scanMinSample" value="30" min="5" step="5">
@@ -402,8 +387,8 @@ th.num, td.num{ text-align:right; font-family:var(--font-mono); }
 
       <div class="card conditions-summary-card">
         <div class="conditions-summary-head">
-          <h3>Active conditions</h3>
-          <button id="editConditionsBtn" class="btn-text">Edit in Scan →</button>
+          <h3>Active angle</h3>
+          <button id="backToScanBtn" class="btn-text">← Back to Scan</button>
         </div>
         <div id="conditionsSummary" class="chip-row"></div>
       </div>
@@ -523,15 +508,14 @@ const DOW = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturd
 /* ---------------- field schema ----------------
    mode: 'categorical' | 'numeric'
    both: true if usable for matching upcoming fixtures
-   lastStart: true for fields drawn from the horse's PREVIOUS run rather
-   than the race being evaluated — see attachLastStart() below.
-   thisRaceResult: true for fields describing the OUTCOME of the race
-   being evaluated itself (this race's own SP, finish, sectional
-   positions). These are genuinely not known before that race is run, so
-   unlike every other field here they're historic-research-only —
-   both:false — and are stripped out when matching upcoming fixtures.
-   Everything else (a race's own pre-race conditions, and last-start
-   form) is knowable in advance and works for both.
+
+   Every field here except 'sp' is a candidate scan dimension — see
+   ALL_SCAN_FIELDS below, which drives the field-toggle buttons in the
+   Scan tab. 'sp' is kept only so the dedicated Min/Max SP control (this
+   race's own starting price) has a field definition to hang its
+   both:false flag on — it's a research-only condition on the race being
+   scored, not a scan dimension, so it never appears in ALL_SCAN_FIELDS
+   or the toggle grid.
 ------------------------------------------------- */
 const FIELDS = [
   { key:'state',          label:'State',                mode:'categorical', both:true },
@@ -546,18 +530,9 @@ const FIELDS = [
   { key:'fieldsize',      label:'Field size',            mode:'numeric',     both:true },
   { key:'barrier',        label:'Barrier',                mode:'numeric',     both:true },
   { key:'weight',         label:'Weight (kg)',           mode:'numeric',     both:true },
-  { key:'prev_sp',          label:'Last start – SP ($)',              mode:'numeric', both:true, lastStart:true },
-  { key:'prev_placeodds',   label:'Last start – place price ($)',     mode:'numeric', both:true, lastStart:true },
-  { key:'prev_finish',      label:'Last start – finishing position',  mode:'numeric', both:true, lastStart:true },
-  { key:'prev_margin',      label:'Last start – margin (lengths)',    mode:'numeric', both:true, lastStart:true },
-  { key:'prev_position400', label:'Last start – position at 400m',    mode:'numeric', both:true, lastStart:true },
-  { key:'prev_position800', label:'Last start – position at 800m',    mode:'numeric', both:true, lastStart:true },
-  { key:'sp',             label:'SP ($)',                 mode:'numeric', both:false, thisRaceResult:true },
-  { key:'placeodds',      label:'Place price ($)',        mode:'numeric', both:false, thisRaceResult:true },
-  { key:'finish',         label:'Finishing position',     mode:'numeric', both:false, thisRaceResult:true },
-  { key:'margin',         label:'Margin (lengths)',       mode:'numeric', both:false, thisRaceResult:true },
-  { key:'position400',    label:'Position at 400m',       mode:'numeric', both:false, thisRaceResult:true },
-  { key:'position800',    label:'Position at 800m',       mode:'numeric', both:false, thisRaceResult:true },
+  { key:'prev_position400', label:'Last start – position at 400m', mode:'numeric', both:true },
+  { key:'prev_position800', label:'Last start – position at 800m', mode:'numeric', both:true },
+  { key:'sp',             label:'SP ($)',                 mode:'numeric', both:false },
 ];
 const FIELD_MAP = Object.fromEntries(FIELDS.map(f=>[f.key,f]));
 const BUCKET_KEYS = ['distance','barrier','weight','fieldsize','trackrating','prev_position400','prev_position800'];
@@ -575,26 +550,30 @@ const BUCKET_KEYS = ['distance','barrier','weight','fieldsize','trackrating','pr
      every other one.
 
    Deliberately excluded from scanning: position400 / position800 (this
-   race's OWN sectional positions). A scanned angle is meant to be a
-   system you could have applied before the race — but a horse's own
-   sectional position in the very race being scored isn't known until
-   that race is under way, so it can never legitimately drive a
-   prospective angle. Their last-start equivalents, prev_position400 /
-   prev_position800, are exactly that same signal but already known in
-   advance, so those are what the scanner searches. The current-race
-   versions still exist as manual filters, under "This race's result",
-   for historic research (e.g. "how did favourites who led throughout
-   actually perform") — just not as something the automated scanner can
-   discover as a bettable angle. */
+   race's OWN sectional positions) — a horse's own sectional position in
+   the very race being scored isn't known until that race is under way,
+   so it can never legitimately drive a prospective angle. Their
+   last-start equivalents (prev_position400 / prev_position800) are the
+   same signal but already known in advance, so those are what the
+   scanner searches.
+
+   Which of these fields actually participate in a given scan is
+   controlled at runtime by STATE.scanFields (see the field-toggle
+   buttons) — these two arrays are the full universe of what CAN be
+   toggled on, not what's currently active. */
 const LOW_CARD_DIMS = ['state','trackcondition','raceclass','dow','distance','barrier','weight','fieldsize','trackrating','prev_position400','prev_position800'];
 const NAMED_DIMS = ['track','jockey','trainer'];
-const SINGLE_SCAN_DIMS = [...LOW_CARD_DIMS, ...NAMED_DIMS];
+const ALL_SCAN_FIELDS = [...LOW_CARD_DIMS, ...NAMED_DIMS];
+// Display order for the toggle buttons — groups named entities with
+// their nearest low-card relatives rather than dumping them at the end.
+const SCAN_FIELD_UI_ORDER = ['state','track','trackcondition','raceclass','jockey','trainer','dow','distance','barrier','weight','fieldsize','trackrating','prev_position400','prev_position800'];
 
 /* ---------------- app state ---------------- */
 const STATE = {
   results: [],
   fixtures: [],
-  filters: [],      // {id, key, mode:'categorical'|'range'|'bucket', values/min/max/value}
+  filters: [],      // {id, key, mode:'categorical'|'range'|'bucket', values/min/max/value} — now only ever holds the applied angle's combo plus, optionally, the Min/Max SP condition
+  scanFields: new Set(ALL_SCAN_FIELDS), // which dimensions the scanner is allowed to test — toggled via the field buttons
   scan: [],
   page: 1,
   pageSize: 50,
@@ -849,10 +828,8 @@ function attachLastStart(results, fixtures){
 }
 
 /* ---------------- filter engine ---------------- */
-function matchesFilters(row, filters, opts={}){
-  const skipOutcome = !!opts.skipOutcome;
+function matchesFilters(row, filters){
   for(const f of filters){
-    if(skipOutcome && FIELD_MAP[f.key] && FIELD_MAP[f.key].outcome) continue;
     const val = row[f.key];
     if(f.mode==='categorical'){
       if(val===undefined || val===null || val==='') return false;
@@ -921,14 +898,17 @@ function scanValueFor(row, dim){
   return row[dim];
 }
 
-// precompute low-card pair/triple index combinations once
-const LOW_PAIR_IDX = (()=>{
-  const out=[];
-  for(let i=0;i<LOW_CARD_DIMS.length;i++) for(let j=i+1;j<LOW_CARD_DIMS.length;j++) out.push([i,j]);
-  return out;
-})();
-
 function runScan(rows, { minSample=30, metric='winROI', depth=2 } = {}){
+  // Only dimensions currently toggled on (STATE.scanFields) participate —
+  // everything below is computed fresh per call rather than once at
+  // load time, since the active set can change between scans.
+  const activeLow = LOW_CARD_DIMS.filter(d=>STATE.scanFields.has(d));
+  const includeTrack = STATE.scanFields.has('track');
+  const includeJockey = STATE.scanFields.has('jockey');
+  const includeTrainer = STATE.scanFields.has('trainer');
+  const lowPairIdx = [];
+  for(let i=0;i<activeLow.length;i++) for(let j=i+1;j<activeLow.length;j++) lowPairIdx.push([i,j]);
+
   const aggs = new Map();
   function addAgg(key, row){
     let a = aggs.get(key);
@@ -945,39 +925,41 @@ function runScan(rows, { minSample=30, metric='winROI', depth=2 } = {}){
   }
 
   for(const row of rows){
-    const lowVals = LOW_CARD_DIMS.map(d=>scanValueFor(row,d));
-    const jockey = row.jockey, trainer = row.trainer, track = row.track;
+    const lowVals = activeLow.map(d=>scanValueFor(row,d));
+    const jockey = includeJockey ? row.jockey : null;
+    const trainer = includeTrainer ? row.trainer : null;
+    const track = includeTrack ? row.track : null;
 
     // single-factor angles
-    for(let i=0;i<LOW_CARD_DIMS.length;i++){
+    for(let i=0;i<activeLow.length;i++){
       if(lowVals[i]==null || lowVals[i]==='') continue;
-      addAgg(JSON.stringify([[LOW_CARD_DIMS[i],lowVals[i]]]), row);
+      addAgg(JSON.stringify([[activeLow[i],lowVals[i]]]), row);
     }
     if(track) addAgg(JSON.stringify([['track',track]]), row);
     if(jockey) addAgg(JSON.stringify([['jockey',jockey]]), row);
     if(trainer) addAgg(JSON.stringify([['trainer',trainer]]), row);
 
     if(depth>=2){
-      // every pair among the low-cardinality dimensions
-      for(const [i,j] of LOW_PAIR_IDX){
+      // every pair among the active low-cardinality dimensions
+      for(const [i,j] of lowPairIdx){
         if(lowVals[i]==null||lowVals[i]===''||lowVals[j]==null||lowVals[j]==='') continue;
-        addAgg(JSON.stringify([[LOW_CARD_DIMS[i],lowVals[i]],[LOW_CARD_DIMS[j],lowVals[j]]]), row);
+        addAgg(JSON.stringify([[activeLow[i],lowVals[i]],[activeLow[j],lowVals[j]]]), row);
       }
       // the jockey/trainer combo itself
       if(jockey && trainer) addAgg(JSON.stringify([['jockey',jockey],['trainer',trainer]]), row);
-      // jockey or trainer crossed with each low-card dimension
-      for(let i=0;i<LOW_CARD_DIMS.length;i++){
+      // jockey or trainer crossed with each active low-card dimension
+      for(let i=0;i<activeLow.length;i++){
         if(lowVals[i]==null || lowVals[i]==='') continue;
-        if(jockey) addAgg(JSON.stringify([['jockey',jockey],[LOW_CARD_DIMS[i],lowVals[i]]]), row);
-        if(trainer) addAgg(JSON.stringify([['trainer',trainer],[LOW_CARD_DIMS[i],lowVals[i]]]), row);
+        if(jockey) addAgg(JSON.stringify([['jockey',jockey],[activeLow[i],lowVals[i]]]), row);
+        if(trainer) addAgg(JSON.stringify([['trainer',trainer],[activeLow[i],lowVals[i]]]), row);
       }
     }
 
     if(depth>=3 && jockey && trainer){
-      // jockey+trainer combo, further narrowed by one low-card dimension
-      for(let i=0;i<LOW_CARD_DIMS.length;i++){
+      // jockey+trainer combo, further narrowed by one active low-card dimension
+      for(let i=0;i<activeLow.length;i++){
         if(lowVals[i]==null || lowVals[i]==='') continue;
-        addAgg(JSON.stringify([['jockey',jockey],['trainer',trainer],[LOW_CARD_DIMS[i],lowVals[i]]]), row);
+        addAgg(JSON.stringify([['jockey',jockey],['trainer',trainer],[activeLow[i],lowVals[i]]]), row);
       }
     }
   }
@@ -1025,64 +1007,12 @@ function comboToFilters(combo){
 
 /* ================= RENDERING ================= */
 
-function uniqueValues(rows, key){
-  const s = new Set();
-  for(const r of rows){ if(r[key]!=null && r[key]!=='') s.add(r[key]); }
-  return Array.from(s).sort();
-}
-
-function renderFieldSelect(){
-  const sel = document.getElementById('newFieldSelect');
-  sel.innerHTML = '';
-  const raceGroup = document.createElement('optgroup');
-  raceGroup.label = "This race's own conditions";
-  const lastStartGroup = document.createElement('optgroup');
-  lastStartGroup.label = 'Last start (previous race)';
-  const resultGroup = document.createElement('optgroup');
-  resultGroup.label = "This race's result (historic research only)";
-  FIELDS.forEach(f=>{
-    const opt = document.createElement('option');
-    opt.value = f.key; opt.textContent = f.label;
-    const group = f.lastStart ? lastStartGroup : f.thisRaceResult ? resultGroup : raceGroup;
-    group.appendChild(opt);
-  });
-  sel.appendChild(raceGroup);
-  sel.appendChild(lastStartGroup);
-  sel.appendChild(resultGroup);
-}
-
-function addFilter(key, presetMode, presetVal){
-  const field = FIELD_MAP[key];
-  if(!field) return;
-  let filter;
-  if(presetMode==='categorical'){
-    filter = { id:filterSeq++, key, mode:'categorical', values:[presetVal] };
-  } else if(presetMode==='bucket'){
-    filter = { id:filterSeq++, key, mode:'bucket', value:presetVal };
-  } else if(field.mode==='categorical'){
-    filter = { id:filterSeq++, key, mode:'categorical', values:[] };
-  } else {
-    filter = { id:filterSeq++, key, mode:'range', min:null, max:null };
-  }
-  STATE.filters.push(filter);
-  STATE.page = 1;
-  renderAll();
-}
-
-function removeFilter(id){
-  STATE.filters = STATE.filters.filter(f=>f.id!==id);
-  STATE.page = 1;
-  renderAll();
-}
-
-/* The Scan tab's dedicated Min/Max SP inputs are just a quick way to set
-   (or update) an ordinary 'sp' range condition — the same kind you'd get
-   from "+ Add condition" — rather than a separate mechanism. If one
-   already exists (however it was created) this updates it in place
-   instead of creating a duplicate; passing both bounds as null removes
-   it entirely. Because it's a real filter, it shows up as a normal chip
-   in Conditions and stays applied everywhere (board, Results) exactly
-   like any other condition — not just for the scan itself. */
+/* The Scan tab's dedicated Min/Max SP inputs are the one remaining
+   value-based condition — this race's own starting price. They work by
+   directly setting (or updating in place) an ordinary 'sp' range filter
+   in STATE.filters, the same structure an applied angle uses, so the
+   board and Results stay in sync automatically. Passing both bounds as
+   null removes it entirely. */
 function setSpRangeFilter(min, max){
   const existing = STATE.filters.find(f=>f.key==='sp' && f.mode==='range');
   if(min==null && max==null){
@@ -1097,7 +1027,7 @@ function syncSpInputs(){
   const minEl = document.getElementById('scanMinSp');
   const maxEl = document.getElementById('scanMaxSp');
   const note = document.getElementById('scanSpNote');
-  if(!minEl || !maxEl) return; // not on a page with the scan controls
+  if(!minEl || !maxEl) return;
   const existing = STATE.filters.find(f=>f.key==='sp' && f.mode==='range');
   if(!existing){
     minEl.value = '';
@@ -1113,110 +1043,29 @@ function syncSpInputs(){
   }
 }
 
-function renderFilterList(){
-  syncSpInputs();
-  const container = document.getElementById('filterList');
+/* One toggle button per scannable field. Highlighted (active) means the
+   field is currently allowed to appear in scan combinations; clicking a
+   button just flips its membership in STATE.scanFields and re-renders
+   the grid — the actual scan only reads this set when "Run scan" is
+   clicked, so toggling fields doesn't need to trigger a re-scan itself. */
+function renderScanFieldToggles(){
+  const container = document.getElementById('scanFieldToggles');
+  if(!container) return;
   container.innerHTML = '';
-  if(STATE.filters.length===0){
-    const p = document.createElement('p');
-    p.className = 'muted small';
-    p.textContent = 'No conditions yet — add one below, or apply an angle from the Scan tab.';
-    container.appendChild(p);
-    return;
-  }
-  STATE.filters.forEach(f=>{
-    const field = FIELD_MAP[f.key];
-    const card = document.createElement('div');
-    card.className = 'filter-card';
-
-    const head = document.createElement('div');
-    head.className = 'filter-card-head';
-    const title = document.createElement('span');
-    title.className = 'filter-card-title';
-    title.textContent = field.label;
-    const rm = document.createElement('button');
-    rm.className = 'filter-remove';
-    rm.textContent = '×';
-    rm.onclick = ()=>removeFilter(f.id);
-    head.appendChild(title); head.appendChild(rm);
-    card.appendChild(head);
-
-    const body = document.createElement('div');
-    body.className = 'filter-card-body';
-
-    if(f.mode==='bucket'){
-      const p = document.createElement('span');
-      p.className = 'small';
-      p.textContent = f.value;
-      body.appendChild(p);
-    } else if(f.mode==='range'){
-      const row = document.createElement('div');
-      row.className = 'range-row';
-      const min = document.createElement('input');
-      min.type = 'number'; min.placeholder = 'min';
-      min.value = f.min ?? '';
-      min.oninput = ()=>{ f.min = min.value===''?null:parseFloat(min.value); STATE.page=1; renderAll(false); };
-      const span = document.createElement('span'); span.textContent = '–';
-      const max = document.createElement('input');
-      max.type = 'number'; max.placeholder = 'max';
-      max.value = f.max ?? '';
-      max.oninput = ()=>{ f.max = max.value===''?null:parseFloat(max.value); STATE.page=1; renderAll(false); };
-      row.appendChild(min); row.appendChild(span); row.appendChild(max);
-      body.appendChild(row);
-    } else if(f.mode==='categorical'){
-      const search = document.createElement('input');
-      search.type='text'; search.className='ms-search'; search.placeholder='Search…';
-      const list = document.createElement('div');
-      list.className = 'ms-list';
-      const source = f.key==='track' || f.key==='jockey' || f.key==='trainer'
-        ? uniqueValues([...STATE.results, ...STATE.fixtures], f.key)
-        : uniqueValues(STATE.results, f.key);
-
-      function drawOptions(filterText){
-        list.innerHTML = '';
-        const ft = (filterText||'').toLowerCase();
-        source.filter(v=>v.toLowerCase().includes(ft)).slice(0,300).forEach(v=>{
-          const opt = document.createElement('label');
-          opt.className = 'ms-option';
-          const cb = document.createElement('input');
-          cb.type='checkbox';
-          cb.checked = f.values.includes(v);
-          cb.onchange = ()=>{
-            if(cb.checked){ if(!f.values.includes(v)) f.values.push(v); }
-            else { f.values = f.values.filter(x=>x!==v); }
-            STATE.page = 1;
-            renderChips(); renderAll(false);
-          };
-          const span = document.createElement('span'); span.textContent = v;
-          opt.appendChild(cb); opt.appendChild(span);
-          list.appendChild(opt);
-        });
-      }
-      search.oninput = ()=>drawOptions(search.value);
-      drawOptions('');
-
-      const chips = document.createElement('div');
-      chips.className = 'chip-row';
-      function renderChips(){
-        chips.innerHTML = '';
-        f.values.forEach(v=>{
-          const chip = document.createElement('span');
-          chip.className = 'chip';
-          const t = document.createElement('span'); t.textContent = v;
-          const x = document.createElement('button'); x.textContent='×';
-          x.onclick = ()=>{ f.values = f.values.filter(x2=>x2!==v); renderChips(); drawOptions(search.value); renderAll(false); };
-          chip.appendChild(t); chip.appendChild(x);
-          chips.appendChild(chip);
-        });
-      }
-      renderChips();
-
-      body.appendChild(search);
-      body.appendChild(list);
-      body.appendChild(chips);
-    }
-    card.appendChild(body);
-    container.appendChild(card);
+  SCAN_FIELD_UI_ORDER.forEach(key=>{
+    const field = FIELD_MAP[key];
+    if(!field) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'field-toggle' + (STATE.scanFields.has(key) ? ' active' : '');
+    btn.textContent = field.label;
+    btn.setAttribute('aria-pressed', STATE.scanFields.has(key) ? 'true' : 'false');
+    btn.onclick = ()=>{
+      if(STATE.scanFields.has(key)) STATE.scanFields.delete(key);
+      else STATE.scanFields.add(key);
+      renderScanFieldToggles();
+    };
+    container.appendChild(btn);
   });
 }
 
@@ -1341,10 +1190,10 @@ function renderTable(rows){
   const pager = document.getElementById('pager');
   pager.innerHTML = '';
   const prev = document.createElement('button'); prev.textContent='← Prev'; prev.disabled = STATE.page<=1;
-  prev.onclick = ()=>{ STATE.page--; renderAll(false); };
+  prev.onclick = ()=>{ STATE.page--; renderAll(); };
   const info = document.createElement('span'); info.textContent = `Page ${STATE.page} of ${totalPages}`;
   const next = document.createElement('button'); next.textContent='Next →'; next.disabled = STATE.page>=totalPages;
-  next.onclick = ()=>{ STATE.page++; renderAll(false); };
+  next.onclick = ()=>{ STATE.page++; renderAll(); };
   pager.appendChild(prev); pager.appendChild(info); pager.appendChild(next);
 }
 
@@ -1375,15 +1224,19 @@ function renderScanTable(){
   });
 }
 
-/* Applying an angle stacks it onto whatever conditions are already set
-   (never replaces them), then jumps to Results so the person immediately
-   sees the upcoming qualifiers and the historic form behind the angle. */
+/* Viewing an angle REPLACES whatever combo-derived filters were applied
+   by a previous angle (there's no Conditions list to review/undo a pile
+   of stacked ones against anymore), but preserves the Min/Max SP
+   condition if one is set — that's a deliberate scan-wide scope the
+   person chose, not part of any one angle, so switching which angle
+   you're looking at shouldn't clear it. */
 function viewAngle(combo){
-  STATE.filters.push(...comboToFilters(combo));
+  const spFilter = STATE.filters.find(f=>f.key==='sp' && f.mode==='range');
+  STATE.filters = spFilter ? [spFilter, ...comboToFilters(combo)] : comboToFilters(combo);
   STATE.page = 1;
   STATE.resultsExpanded = false;
   activateTab('results');
-  renderAll(true);
+  renderAll();
 }
 
 function miniHistoricTable(rows){
@@ -1429,7 +1282,7 @@ function renderHistoricPreview(rows){
     const collapseBtn = document.createElement('button');
     collapseBtn.className = 'btn btn-ghost btn-small';
     collapseBtn.textContent = '▴ Collapse to preview';
-    collapseBtn.onclick = ()=>{ STATE.resultsExpanded = false; renderAll(false); };
+    collapseBtn.onclick = ()=>{ STATE.resultsExpanded = false; renderAll(); };
     previewWrap.appendChild(collapseBtn);
     renderTable(rows);
   } else {
@@ -1451,7 +1304,7 @@ function renderHistoricPreview(rows){
       btn.className = 'btn btn-primary btn-small';
       btn.style.marginTop = '10px';
       btn.textContent = `View all ${rows.length.toLocaleString()} historic results →`;
-      btn.onclick = ()=>{ STATE.resultsExpanded = true; renderAll(false); };
+      btn.onclick = ()=>{ STATE.resultsExpanded = true; renderAll(); };
       previewWrap.appendChild(btn);
     }
   }
@@ -1518,7 +1371,7 @@ function renderConditionsSummary(){
   if(STATE.filters.length===0){
     const p = document.createElement('p');
     p.className = 'muted small';
-    p.textContent = 'No conditions set — showing all historic runs and every upcoming runner.';
+    p.textContent = 'No angle applied yet — showing all historic runs and every upcoming runner.';
     el.appendChild(p);
     return;
   }
@@ -1541,11 +1394,12 @@ function renderResultsPanel(rows){
   renderHistoricPreview(rows);
 }
 
-function renderAll(refreshFilterUI=true){
+function renderAll(){
   const rows = eligibleResults();
   const summary = computeSummary(rows);
   renderBoard(rows, summary);
-  if(refreshFilterUI) renderFilterList();
+  syncSpInputs();
+  renderScanFieldToggles();
   if(STATE.activeTab==='results'){
     renderResultsPanel(rows);
   }
@@ -1559,28 +1413,35 @@ function activateTab(tab){
 }
 function setActiveTab(tab){
   activateTab(tab);
-  renderAll(false);
+  renderAll();
 }
 
 function initEvents(){
   document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click', ()=>setActiveTab(t.dataset.tab)));
-  document.getElementById('editConditionsBtn').addEventListener('click', ()=>setActiveTab('scan'));
+  document.getElementById('backToScanBtn').addEventListener('click', ()=>setActiveTab('scan'));
 
-  document.getElementById('addFilterBtn').addEventListener('click', ()=>{
-    const key = document.getElementById('newFieldSelect').value;
-    addFilter(key);
+  document.getElementById('selectAllFields').addEventListener('click', ()=>{
+    STATE.scanFields = new Set(ALL_SCAN_FIELDS);
+    renderScanFieldToggles();
   });
-  document.getElementById('clearFilters').addEventListener('click', ()=>{
+  document.getElementById('deselectAllFields').addEventListener('click', ()=>{
+    STATE.scanFields = new Set();
+    renderScanFieldToggles();
+  });
+  document.getElementById('resetScanBtn').addEventListener('click', ()=>{
     STATE.filters = [];
+    STATE.scanFields = new Set(ALL_SCAN_FIELDS);
+    STATE.scan = [];
     STATE.page = 1;
+    renderScanTable();
     renderAll();
   });
 
-  document.getElementById('sortField').addEventListener('change', e=>{ STATE.sortField = e.target.value; STATE.page=1; renderAll(false); });
+  document.getElementById('sortField').addEventListener('change', e=>{ STATE.sortField = e.target.value; STATE.page=1; renderAll(); });
   document.getElementById('sortDir').addEventListener('click', e=>{
     STATE.sortDir = STATE.sortDir==='asc' ? 'desc' : 'asc';
     e.target.textContent = (STATE.sortDir==='asc'?'↑ Asc':'↓ Desc');
-    renderAll(false);
+    renderAll();
   });
 
   document.getElementById('runScanBtn').addEventListener('click', ()=>{
@@ -1600,7 +1461,7 @@ function initEvents(){
       const rows = eligibleResults().filter(r=>r.sp!=null);
       STATE.scan = runScan(rows, { minSample, metric, depth });
       renderScanTable();
-      renderAll(true);
+      renderAll();
       btn.disabled = false; btn.textContent = 'Run scan';
     }, 30);
   });
@@ -1674,8 +1535,8 @@ function loadResultsFile(filename){
 }
 
 async function init(){
-  renderFieldSelect();
   initEvents();
+  renderScanFieldToggles();
 
   const resultsSettled = await Promise.all(RESULTS_CSV_FILES.map(loadResultsFile));
   STATE.results = resultsSettled.flatMap(r => r.rows);
