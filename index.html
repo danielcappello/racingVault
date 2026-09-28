@@ -238,6 +238,8 @@ table{ border-collapse:collapse; width:100%; }
 /* ---------------- scan controls ---------------- */
 .scan-controls{ display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end; margin-bottom:18px; padding:14px 16px; background:#FAFAFB; border:1px solid var(--border); border-radius:var(--radius-md); }
 .scan-controls label{ display:flex; flex-direction:column; gap:4px; font-weight:500; color:var(--text-muted); font-size:12px; }
+.staking-params{ display:contents; }
+.staking-params[hidden]{ display:none; }
 
 /* ---------------- tables ---------------- */
 /* table-layout:fixed means columns share the container's width evenly
@@ -461,6 +463,67 @@ th.num, td.num{ text-align:right; font-family:var(--font-mono); }
       <div class="card">
         <div class="card-head">
           <div>
+            <h2>Staking plan</h2>
+            <p class="muted small">Changes the dollar amounts below and in the historic table/chart — the Win ROI stat above stays a fixed $1-stake baseline so you can compare angles independent of how you'd actually size bets. This is a backtesting calculator only: nothing here places bets or touches Hyperbot.</p>
+          </div>
+        </div>
+        <div class="scan-controls">
+          <label class="small">Method
+            <select id="stakingMethod">
+              <option value="flat">Flat stake</option>
+              <option value="proportional">Proportional to odds</option>
+              <option value="kelly">Kelly</option>
+              <option value="fixed_return">Fixed return</option>
+            </select>
+          </label>
+
+          <span class="staking-params" data-method="flat">
+            <label class="small">Stake ($)
+              <input type="number" id="stakingFlatAmount" min="0" step="0.5">
+            </label>
+          </span>
+
+          <span class="staking-params" data-method="proportional" hidden>
+            <label class="small">Base unit ($)
+              <input type="number" id="stakingPropBase" min="0" step="0.5">
+            </label>
+            <label class="small">Exponent
+              <input type="number" id="stakingPropExponent" step="0.1">
+            </label>
+          </span>
+
+          <span class="staking-params" data-method="kelly" hidden>
+            <label class="small">Bankroll ($)
+              <input type="number" id="stakingKellyBankroll" min="0" step="50">
+            </label>
+            <label class="small">Kelly fraction
+              <input type="number" id="stakingKellyFraction" min="0" max="1" step="0.05">
+            </label>
+          </span>
+
+          <span class="staking-params" data-method="fixed_return" hidden>
+            <label class="small">Target ($)
+              <input type="number" id="stakingFixedAmount" min="0" step="1">
+            </label>
+            <label class="small">Target is
+              <select id="stakingFixedType">
+                <option value="profit">Profit on a win</option>
+                <option value="payout">Total payout on a win</option>
+              </select>
+            </label>
+          </span>
+
+          <label class="small">Max stake ($)
+            <input type="number" id="stakingMaxStake" min="0" step="5">
+          </label>
+        </div>
+        <p class="muted small" id="stakingSummaryLine">—</p>
+        <p class="muted small">Every method here is computed independently per bet from that bet's own price — not a running, compounding bankroll — so Kelly's bankroll figure is treated as fixed throughout the backtest and for the suggested stakes above, not as a simulated balance that grows or shrinks as it goes.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
             <h2>Backtested results <span class="source-tag">historic results (2018–2026) · historic</span></h2>
             <p class="muted small" id="historicSummaryLine">—</p>
           </div>
@@ -603,6 +666,19 @@ const STATE = {
   sortDir: 'desc',
   activeTab: 'scan',
   resultsExpanded: false,
+  // Defaults to flat $1 so the app's numbers are unchanged until someone
+  // actually opens the Staking plan card and picks something else.
+  staking: {
+    method: 'flat',
+    flatAmount: 1,
+    propBase: 1,
+    propExponent: -1,
+    kellyBankroll: 1000,
+    kellyFraction: 0.25,
+    fixedReturnAmount: 1,
+    fixedReturnType: 'profit',
+    maxStake: 100,
+  },
 };
 let filterSeq = 1;
 
@@ -915,13 +991,90 @@ function computeSummary(rows){
   };
 }
 
-function buildCumulativeSeries(rows){
+function buildCumulativeSeries(rows, staking, p, n){
   const eligible = rows.filter(r=>r.sp!=null && r.finish!=null && r.date).sort((a,b)=>a.date-b.date);
   let cum = 0;
   return eligible.map(r=>{
-    cum += (r.finish===1 ? r.sp-1 : -1);
+    const stake = computeStake(r, staking, p, n);
+    cum += (r.finish===1 ? stake*(r.sp-1) : -stake);
     return { date:r.date, cum };
   });
+}
+
+/* ---------------- staking ----------------
+   Turns a stake-per-bet method + this row's own SP into a dollar stake.
+   Every method is a pure function of (row, config, p, n) — no
+   chronological or bankroll state carried between rows — so the same
+   call works whether it's feeding the historic table, the profit
+   chart, or a suggested stake for an upcoming runner. That trades away
+   a properly compounding simulation (where a win grows the bankroll
+   available to the next Kelly bet) for something simple, consistent
+   everywhere it's used, and honest about being a fixed-bankroll
+   approximation — the UI says so next to the bankroll field rather
+   than implying otherwise.
+   `p` is the angle's own historic win strike rate (0–1) and `n` is the
+   sample size it was measured over — both passed in by the caller
+   rather than recomputed per row, so every row in one summary uses the
+   exact same probability estimate and taper. */
+function computeStake(row, staking, p, n){
+  if(row.sp==null) return 0;
+  return computeStakeForPrice(row.sp, staking, p, n);
+}
+
+/* Same staking math as computeStake, but takes a raw price instead of a
+   historic result row — this is what lets the exact same formulas
+   produce a suggested stake for an upcoming fixture (which has a
+   winPrice, not an sp/finish) without duplicating the switch below. */
+function computeStakeForPrice(price, staking, p, n){
+  if(price==null || price<=1) return 0;
+  const s = staking || STATE.staking;
+  let stake = 0;
+  switch(s.method){
+    case 'proportional':
+      stake = (s.propBase||0) * Math.pow(price, s.propExponent ?? -1);
+      break;
+    case 'kelly': {
+      const b = price - 1;
+      const prob = p==null ? 0 : p;
+      const fStar = Math.max(0, (b*prob - (1-prob)) / b);
+      // Tapers the fraction down for a thin sample rather than trusting
+      // a strike rate estimated from only a handful of runs at full
+      // strength — see the write-up on why this matters for Kelly
+      // specifically.
+      const sampleTaper = Math.min(1, (n==null ? 100 : n) / 100);
+      stake = (s.kellyFraction ?? 0.25) * sampleTaper * fStar * (s.kellyBankroll||0);
+      break;
+    }
+    case 'fixed_return':
+      stake = s.fixedReturnType==='payout'
+        ? (s.fixedReturnAmount||0) / price
+        : (s.fixedReturnAmount||0) / (price - 1);
+      break;
+    case 'flat':
+    default:
+      stake = s.flatAmount ?? 1;
+  }
+  if(!isFinite(stake) || stake<0) stake = 0;
+  if(s.maxStake!=null && s.maxStake>0) stake = Math.min(stake, s.maxStake);
+  return stake;
+}
+
+/* Aggregate staking outcome for a set of rows under the current plan —
+   feeds the Staking plan card's summary line. Only rows with a price
+   and a known finish count as an actual bet; a $0 stake (e.g. Kelly
+   finding no edge on that price) is excluded from the bet count too,
+   since nothing was actually risked. */
+function computeStakingSummary(rows, staking, p, n){
+  let bets=0, totalStaked=0, totalProfit=0;
+  for(const r of rows){
+    if(r.sp==null || r.finish==null) continue;
+    const stake = computeStake(r, staking, p, n);
+    if(stake<=0) continue;
+    bets++;
+    totalStaked += stake;
+    totalProfit += (r.finish===1 ? stake*(r.sp-1) : -stake);
+  }
+  return { bets, totalStaked, totalProfit, roiOnStaked: totalStaked? totalProfit/totalStaked*100 : null };
 }
 
 /* ---------------- scan engine (Apriori-pruned) ----------------
@@ -1221,8 +1374,8 @@ function renderBoard(rows, summary){
   placeCell.className = 'board-cell' + (summary.placeROI>0?' pos':summary.placeROI<0?' neg':'');
 }
 
-function renderChart(rows){
-  const series = buildCumulativeSeries(rows);
+function renderChart(rows, staking, p, n){
+  const series = buildCumulativeSeries(rows, staking, p, n);
   const svg = document.getElementById('profitChart');
   const empty = document.getElementById('chartEmpty');
   svg.innerHTML = '';
@@ -1231,7 +1384,7 @@ function renderChart(rows){
 
   const W=1000,H=260, padL=54, padR=16, padT=16, padB=26;
   const xs = series.map((_,i)=>i);
-  const ys = series.map(p=>p.cum);
+  const ys = series.map(pt=>pt.cum);
   // Same stack-overflow risk as above if spread — a broad, unfiltered
   // view across several years of results can easily produce a series
   // with hundreds of thousands of points.
@@ -1281,12 +1434,12 @@ function renderChart(rows){
   svg.appendChild(endLabel);
 }
 
-function renderTable(rows){
+function renderTable(rows, staking, p, n){
   const thead = document.querySelector('#resultsTable thead');
   const tbody = document.querySelector('#resultsTable tbody');
   thead.innerHTML = `<tr>
     <th>Date</th><th>Track</th><th>Race</th><th>Horse</th><th>Jockey</th><th>Trainer</th>
-    <th class="num">Barrier</th><th class="num">Weight</th><th class="num">SP</th><th class="num">Finish</th><th class="num">Profit</th>
+    <th class="num">Barrier</th><th class="num">Weight</th><th class="num">SP</th><th class="num">Finish</th><th class="num">Stake</th><th class="num">Profit</th>
   </tr>`;
 
   const sorted = [...rows];
@@ -1294,8 +1447,8 @@ function renderTable(rows){
   sorted.sort((a,b)=>{
     let av, bv;
     if(f==='winProfit'){
-      av = a.sp!=null ? (a.finish===1?a.sp-1:-1) : -Infinity;
-      bv = b.sp!=null ? (b.finish===1?b.sp-1:-1) : -Infinity;
+      av = a.sp!=null ? (a.finish===1 ? computeStake(a,staking,p,n)*(a.sp-1) : -computeStake(a,staking,p,n)) : -Infinity;
+      bv = b.sp!=null ? (b.finish===1 ? computeStake(b,staking,p,n)*(b.sp-1) : -computeStake(b,staking,p,n)) : -Infinity;
     } else { av = a[f]; bv = b[f]; }
     if(av==null && bv==null) return 0;
     if(av==null) return 1;
@@ -1314,7 +1467,8 @@ function renderTable(rows){
 
   tbody.innerHTML = '';
   pageRows.forEach(r=>{
-    const profit = r.sp!=null ? (r.finish===1 ? r.sp-1 : -1) : null;
+    const stake = r.sp!=null ? computeStake(r, staking, p, n) : 0;
+    const profit = r.sp!=null ? (r.finish===1 ? stake*(r.sp-1) : -stake) : null;
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${fmtDate(r.date)}</td>
@@ -1327,6 +1481,7 @@ function renderTable(rows){
       <td class="num">${r.weight ?? '—'}</td>
       <td class="num">${r.sp!=null ? '$'+r.sp.toFixed(2) : '—'}</td>
       <td class="num">${r.finish ?? '—'}</td>
+      <td class="num">${r.sp!=null ? '$'+stake.toFixed(2) : '—'}</td>
       <td class="num ${profit>0?'profit-pos':profit<0?'profit-neg':''}">${profit!=null?money(profit):'—'}</td>
     `;
     tbody.appendChild(tr);
@@ -1384,20 +1539,22 @@ function viewAngle(combo){
   renderAll();
 }
 
-function miniHistoricTable(rows){
+function miniHistoricTable(rows, staking, p, n){
   if(rows.length===0) return '<p class="muted small">No historic runs match your conditions yet — try loosening one of them.</p>';
   const preview = rows.slice(0, 8);
   let html = `<table class="mini-table"><thead><tr>
     <th>Date</th><th>Track</th><th>Race</th><th>Horse</th><th>Jockey</th><th>Trainer</th>
-    <th class="num">SP</th><th class="num">Finish</th><th class="num">Profit</th>
+    <th class="num">SP</th><th class="num">Finish</th><th class="num">Stake</th><th class="num">Profit</th>
   </tr></thead><tbody>`;
   preview.forEach(r=>{
-    const profit = r.sp!=null ? (r.finish===1 ? r.sp-1 : -1) : null;
+    const stake = r.sp!=null ? computeStake(r, staking, p, n) : 0;
+    const profit = r.sp!=null ? (r.finish===1 ? stake*(r.sp-1) : -stake) : null;
     html += `<tr>
       <td>${fmtDate(r.date)}</td><td>${r.track}</td><td>R${r.race}</td><td>${r.horse}</td>
       <td>${r.jockey}</td><td>${r.trainer}</td>
       <td class="num">${r.sp!=null?'$'+r.sp.toFixed(2):'—'}</td>
       <td class="num">${r.finish ?? '—'}</td>
+      <td class="num">${r.sp!=null?'$'+stake.toFixed(2):'—'}</td>
       <td class="num ${profit>0?'profit-pos':profit<0?'profit-neg':''}">${profit!=null?money(profit):'—'}</td>
     </tr>`;
   });
@@ -1405,20 +1562,40 @@ function miniHistoricTable(rows){
   return html;
 }
 
+const STAKING_METHOD_LABELS = {
+  flat: 'flat stake',
+  proportional: 'proportional-to-odds staking',
+  kelly: 'Kelly staking',
+  fixed_return: 'fixed-return staking',
+};
+
 function renderHistoricPreview(rows){
   const summaryLine = document.getElementById('historicSummaryLine');
+  const stakingLine = document.getElementById('stakingSummaryLine');
   const previewWrap = document.getElementById('historicPreviewWrap');
   const fullWrap = document.getElementById('historicFullWrap');
   const summary = computeSummary(rows);
+  const staking = STATE.staking;
+  const p = summary.strikeRate!=null ? summary.strikeRate/100 : null;
+  const n = summary.n;
 
   summaryLine.textContent = rows.length
-    ? `${rows.length.toLocaleString()} historic runs match your conditions · ${summary.strikeRate!=null?summary.strikeRate.toFixed(1)+'%':'—'} win strike rate · ${pct(summary.winROI)} win ROI`
+    ? `${rows.length.toLocaleString()} historic runs match your conditions · ${summary.strikeRate!=null?summary.strikeRate.toFixed(1)+'%':'—'} win strike rate · ${pct(summary.winROI)} win ROI at level $1 stakes`
     : 'No historic runs match your conditions yet.';
+
+  if(stakingLine){
+    const stakeSummary = computeStakingSummary(rows, staking, p, n);
+    stakingLine.textContent = stakeSummary.bets
+      ? `Under ${STAKING_METHOD_LABELS[staking.method]||'this plan'}: ${stakeSummary.bets.toLocaleString()} bets, $${stakeSummary.totalStaked.toFixed(2)} staked → ${money(stakeSummary.totalProfit)} net (${pct(stakeSummary.roiOnStaked)} return on staked capital).`
+      : 'No bets would have been placed under the current staking plan (every stake came out to $0 — check the plan\'s inputs below).';
+  }
 
   // The cumulative profit chart is always visible — it's the headline
   // number for "is this angle profitable", not something to hide behind
-  // a toggle.
-  renderChart(rows);
+  // a toggle. It reflects the selected staking plan's dollar amounts,
+  // not a fixed $1 level stake — see the Win ROI stat above for the
+  // stake-independent baseline.
+  renderChart(rows, staking, p, n);
 
   previewWrap.innerHTML = '';
 
@@ -1429,7 +1606,7 @@ function renderHistoricPreview(rows){
     collapseBtn.textContent = '▴ Collapse to preview';
     collapseBtn.onclick = ()=>{ STATE.resultsExpanded = false; renderAll(); };
     previewWrap.appendChild(collapseBtn);
-    renderTable(rows);
+    renderTable(rows, staking, p, n);
   } else {
     fullWrap.hidden = true;
     // Sort by date (most recent first); rows with an unparsed/missing date
@@ -1442,7 +1619,7 @@ function renderHistoricPreview(rows){
       return 0;
     });
     const table = document.createElement('div');
-    table.innerHTML = miniHistoricTable(sorted);
+    table.innerHTML = miniHistoricTable(sorted, staking, p, n);
     previewWrap.appendChild(table);
     if(rows.length > 0){
       const btn = document.createElement('button');
@@ -1455,7 +1632,7 @@ function renderHistoricPreview(rows){
   }
 }
 
-function renderQualifiers(){
+function renderQualifiers(p, n){
   const applicableFilters = STATE.filters.filter(f=>!FIELD_MAP[f.key] || FIELD_MAP[f.key].both);
   const droppedCount = STATE.filters.length - applicableFilters.length;
   const note = document.getElementById('qualifiersNote');
@@ -1464,7 +1641,7 @@ function renderQualifiers(){
   const empty = document.getElementById('qualifiersEmpty');
   thead.innerHTML = `<tr>
     <th>Date</th><th>State</th><th>Track</th><th>Race</th><th>Horse</th><th>Jockey</th><th>Trainer</th>
-    <th class="num">Barrier</th><th class="num">Weight</th><th>Condition</th>
+    <th class="num">Barrier</th><th class="num">Weight</th><th>Condition</th><th class="num">Stake</th>
   </tr>`;
   tbody.innerHTML = '';
 
@@ -1484,6 +1661,7 @@ function renderQualifiers(){
   note.textContent = droppedCount>0
     ? `${droppedCount} condition${droppedCount>1?'s':''} describing this race's own result ignored here — only pre-race and last-start conditions transfer to upcoming fields.`
     : `Showing upcoming runners matching your current conditions — including last-start form, since a horse's previous run is already known.`;
+  note.textContent += ' Suggested stakes use the price in racing_fixtures.csv when present; odds-dependent methods show "no live price" without one — flat staking doesn\'t need a price at all.';
 
   const matches = STATE.fixtures.filter(r=>!r.scratched && matchesFilters(r, applicableFilters));
   empty.textContent = 'No upcoming runners match the current conditions.';
@@ -1493,6 +1671,11 @@ function renderQualifiers(){
     .sort((a,b)=> (a.date&&b.date? a.date-b.date : 0) || (a.track||'').localeCompare(b.track||'') || (Number(a.race)-Number(b.race)))
     .forEach(r=>{
       const tr = document.createElement('tr');
+      const hasPrice = r.winPrice!=null;
+      const stake = hasPrice ? computeStakeForPrice(r.winPrice, STATE.staking, p, n) : null;
+      const stakeCell = STATE.staking.method==='flat'
+        ? '$'+computeStakeForPrice(2, STATE.staking, p, n).toFixed(2) // flat stake doesn't need a price at all
+        : (hasPrice ? '$'+stake.toFixed(2) : '<span class="muted">no live price</span>');
       tr.innerHTML = `
         <td>${fmtDate(r.date)}</td>
         <td>${r.state}</td>
@@ -1504,6 +1687,7 @@ function renderQualifiers(){
         <td class="num">${r.barrier ?? '—'}</td>
         <td class="num">${r.weight ?? '—'}</td>
         <td>${r.trackcondition||'—'}</td>
+        <td class="num">${stakeCell}</td>
       `;
       tbody.appendChild(tr);
     });
@@ -1533,9 +1717,40 @@ function renderConditionsSummary(){
   });
 }
 
+/* Shows/hides the param fields for whichever method is selected and
+   keeps every input's displayed value in sync with STATE.staking —
+   called every time the Results panel re-renders, so switching tabs
+   away and back, or applying a new angle, never leaves a stale value
+   showing. Each input's own change handler (wired in initEvents) is
+   what actually updates STATE.staking; this function only reflects
+   state back into the DOM, it never reads from the DOM itself. */
+function renderStakingControls(){
+  const methodEl = document.getElementById('stakingMethod');
+  if(!methodEl) return;
+  const s = STATE.staking;
+  methodEl.value = s.method;
+
+  document.querySelectorAll('.staking-params').forEach(el=>{
+    el.hidden = el.dataset.method !== s.method;
+  });
+
+  document.getElementById('stakingFlatAmount').value = s.flatAmount;
+  document.getElementById('stakingPropBase').value = s.propBase;
+  document.getElementById('stakingPropExponent').value = s.propExponent;
+  document.getElementById('stakingKellyBankroll').value = s.kellyBankroll;
+  document.getElementById('stakingKellyFraction').value = s.kellyFraction;
+  document.getElementById('stakingFixedAmount').value = s.fixedReturnAmount;
+  document.getElementById('stakingFixedType').value = s.fixedReturnType;
+  document.getElementById('stakingMaxStake').value = s.maxStake;
+}
+
 function renderResultsPanel(rows){
   renderConditionsSummary();
-  renderQualifiers();
+  renderStakingControls();
+  const summary = computeSummary(rows);
+  const p = summary.strikeRate!=null ? summary.strikeRate/100 : null;
+  const n = summary.n;
+  renderQualifiers(p, n);
   renderHistoricPreview(rows);
 }
 
@@ -1576,6 +1791,29 @@ function setActiveTab(tab){
 function initEvents(){
   document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click', ()=>setActiveTab(t.dataset.tab)));
   document.getElementById('backToScanBtn').addEventListener('click', ()=>setActiveTab('scan'));
+
+  document.getElementById('stakingMethod').addEventListener('change', e=>{
+    STATE.staking.method = e.target.value;
+    renderAll();
+  });
+  const stakingNumberField = (id, key, {min}={}) => {
+    document.getElementById(id).addEventListener('input', e=>{
+      const v = parseFloat(e.target.value);
+      STATE.staking[key] = isFinite(v) ? (min!=null ? Math.max(min, v) : v) : STATE.staking[key];
+      renderAll();
+    });
+  };
+  stakingNumberField('stakingFlatAmount', 'flatAmount', {min:0});
+  stakingNumberField('stakingPropBase', 'propBase', {min:0});
+  stakingNumberField('stakingPropExponent', 'propExponent');
+  stakingNumberField('stakingKellyBankroll', 'kellyBankroll', {min:0});
+  stakingNumberField('stakingKellyFraction', 'kellyFraction', {min:0});
+  stakingNumberField('stakingFixedAmount', 'fixedReturnAmount', {min:0});
+  stakingNumberField('stakingMaxStake', 'maxStake', {min:0});
+  document.getElementById('stakingFixedType').addEventListener('change', e=>{
+    STATE.staking.fixedReturnType = e.target.value;
+    renderAll();
+  });
 
   document.getElementById('selectAllFields').addEventListener('click', ()=>{
     STATE.scanFields = new Set(ALL_SCAN_FIELDS);
